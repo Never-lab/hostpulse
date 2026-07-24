@@ -24,6 +24,9 @@ bin/*.html
 # Graphify cache (regenerate locally)
 graphify-out/
 
+# Local learning notes (Italian know-how; never ship)
+docs/apprendimenti/
+
 # Local overrides (example stays tracked)
 config/config.json
 
