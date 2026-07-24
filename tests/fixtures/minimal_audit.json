@@ -1,10 +1,14 @@
 {
+  "schema_version": 1,
+  "engine_version": "0.1.0",
   "meta": {
     "hostname": "ci-fixture",
     "date": "2026-07-24 12:00:00",
     "timestamp": 1721822400,
     "is_admin": false,
-    "profile": "generic"
+    "profile": "generic",
+    "quick": true,
+    "production_safe": true
   },
   "sys_info": {
     "power_plan": "N/A",

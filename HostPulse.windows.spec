@@ -24,6 +24,8 @@ a = Analysis(
         "app_paths",
         "engine",
         "reporter_generator",
+        "schema",
+        "version",
         "customtkinter",
         "PIL._tkinter_finder",
         "matplotlib.backends.backend_agg",

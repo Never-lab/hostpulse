@@ -19,7 +19,7 @@ def _ensure_bin_on_path() -> None:
 
 @pytest.mark.parametrize(
     "modname",
-    ["app_paths", "version", "engine", "reporter_generator"],
+    ["app_paths", "version", "schema", "engine", "reporter_generator"],
 )
 def test_import_core_modules(modname: str) -> None:
     mod = importlib.import_module(modname)

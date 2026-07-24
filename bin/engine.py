@@ -2,6 +2,7 @@ import os, psutil, platform, time, multiprocessing, json, ctypes, statistics, ra
 from datetime import datetime
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_config_dir, get_results_dir
+from schema import stamp_audit
 
 _PING_LATENCY_RE = re.compile(
     r"(?:time|tempo|durata)\s*[=<]\s*<?\s*(\d+)",
@@ -72,14 +73,15 @@ class HostPulseEngine:
         self.config = self._load_config()
         if self.quick:
             self._apply_quick_mode()
-        production_safe = production_safe or bool(self.config.get("PRODUCTION_SAFE", False))
-        if production_safe:
+        self.production_safe = bool(production_safe) or bool(self.config.get("PRODUCTION_SAFE", False))
+        if self.production_safe:
             self._apply_production_safe()
         self.profile = profile if profile is not None else (self.config.get("PROFILE") or "generic")
         if self.profile not in ("generic", "app_server", "db_server"):
             self.profile = "generic"
         self.data = self._init_data_structure()
         self.data["meta"]["profile"] = self.profile
+        stamp_audit(self.data, quick=self.quick, production_safe=self.production_safe)
 
     def _init_data_structure(self):
         return {
@@ -661,6 +663,8 @@ class HostPulseEngine:
                 )
 
     def save_results(self):
+        # Re-stamp so on-disk JSON always carries current contract versions.
+        stamp_audit(self.data, quick=self.quick, production_safe=self.production_safe)
         filename = f"audit_{self.data['meta']['hostname']}_{self.data['meta']['timestamp']}.json"
         target = os.path.join(self.results_dir, filename)
         with open(target, 'w', encoding='utf-8') as f:
