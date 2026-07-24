@@ -56,7 +56,7 @@ Copia `config/config.example.json` → `config/config.json` e adatta profilo / s
 - `PROFILE`: `generic` | `app_server` | `db_server`
 - `PRODUCTION_SAFE`: riduce carico su VM in produzione
 
-Dettagli: [DEPLOY.md](DEPLOY.md) · JSON: [docs/SCHEMA.md](docs/SCHEMA.md) · OS: [docs/PLATFORM.md](docs/PLATFORM.md).
+Dettagli: [DEPLOY.md](DEPLOY.md) · JSON: [docs/SCHEMA.md](docs/SCHEMA.md) · OS: [docs/PLATFORM.md](docs/PLATFORM.md) · [CHANGELOG](CHANGELOG.md).
 
 ## Build EXE Windows
 

@@ -13,7 +13,10 @@ from cancel import check_cancel
 from engine import HostPulseEngine
 from reporter_generator import ReportGenerator
 
-ProgressFn = Callable[[str, int, str], None]  # status, step 0-4, log line
+# step index for progress bar: 0..PROGRESS_TOTAL
+PROGRESS_TOTAL = 6
+
+ProgressFn = Callable[[str, int, str], None]  # status, step, log line
 
 
 @dataclass
@@ -62,58 +65,59 @@ def run_audit(
     )
     engine.cancel_event = cancel_event
 
+    mode = "production-safe" if production_safe else ("quick" if quick else "full")
     progress(
-        "Preparazione motore analisi...",
+        "0/6 · Preparazione",
         0,
-        f"Target: {engine.data['meta']['hostname']} | Admin: {engine.data['meta']['is_admin']}",
+        f"Host {engine.data['meta']['hostname']} · profilo={profile} · modo={mode} · admin={engine.data['meta']['is_admin']}",
     )
 
-    progress("Analisi sistema & CPU...", 1, "[1/4] Raccolta informazioni di sistema...")
+    progress("1/6 · Sistema", 1, "[1/6] Raccolta informazioni di sistema...")
     engine.collect_sys_info()
     check_cancel(cancel_event)
 
     if profile == "app_server" and engine.config.get("APP_PORT_CHECK") is not None:
-        progress("Analisi sistema & CPU...", 1, "[1/4] Verifica porta applicativa...")
+        progress("1/6 · Sistema", 1, "[1/6] Verifica porta applicativa...")
         engine.check_app_port()
         check_cancel(cancel_event)
 
-    progress("Analisi sistema & CPU...", 1, "[1/4] CPU benchmark in corso...")
+    progress("2/6 · CPU", 2, "[2/6] CPU consistency...")
     engine.cpu_benchmark_suite()
     check_cancel(cancel_event)
-
-    progress("Analisi sistema & CPU...", 1, "[1/4] CPU real-world test...")
+    progress("2/6 · CPU", 2, "[2/6] CPU real-world (hash/compress)...")
     engine.cpu_real_world()
     check_cancel(cancel_event)
 
-    progress("Analisi sistema & CPU...", 1, "[1/4] RAM bandwidth test...")
+    progress("3/6 · RAM e rete", 3, "[3/6] Bandwidth RAM...")
     engine.ram_benchmark()
     check_cancel(cancel_event)
-
-    progress("Analisi sistema & CPU...", 1, "[1/4] Network latency test...")
+    progress("3/6 · RAM e rete", 3, "[3/6] Ping / latenza rete...")
     engine.net_benchmark()
     check_cancel(cancel_event)
 
-    progress("Benchmark storage (Seq & IOPS)...", 2, "[2/4] Benchmark disco in corso...")
+    progress("4/6 · Disco", 4, "[4/6] Benchmark disco (seq + IOPS)...")
     engine.disk_benchmarks()
     check_cancel(cancel_event)
 
     if not production_safe and not engine.skip_chaos:
-        progress("Benchmark storage (Seq & IOPS)...", 2, "[2/4] Chaos test (IOPS sotto carico CPU)...")
+        progress("4/6 · Disco", 4, "[4/6] Chaos: IOPS sotto carico CPU...")
         engine.chaos_disk_under_load()
         chaos = engine.data["benchmark"]["chaos"]
         if chaos.get("active"):
             progress(
-                "Benchmark storage (Seq & IOPS)...",
-                2,
-                f"[2/4] Chaos: impatto IOPS {chaos.get('impact_pct', 0)}%.",
+                "4/6 · Disco",
+                4,
+                f"[4/6] Chaos: impatto IOPS {chaos.get('impact_pct', 0)}%.",
             )
         check_cancel(cancel_event)
+    elif production_safe:
+        progress("4/6 · Disco", 4, "[4/6] Chaos saltato (production-safe).")
 
-    progress("Salvataggio risultati...", 3, "[3/4] Salvataggio risultati su disco...")
+    progress("5/6 · Salvataggio", 5, "[5/6] Scrittura JSON risultati...")
     json_path = engine.save_results()
     check_cancel(cancel_event)
 
-    progress("Generazione report...", 4, "[4/4] Generazione report...")
+    progress("6/6 · Report", 6, "[6/6] Generazione report HTML...")
     ref = _load_baseline(root_dir)
     if compare:
         reporter = ReportGenerator(engine.get_history(), reference=ref, style="corporate")
@@ -129,5 +133,5 @@ def run_audit(
     html_path = os.path.join(bin_dir, report_html)
     Path(html_path).write_text(reporter.render(), encoding="utf-8")
 
-    progress("Completato", 4, f"Report HTML: {html_path}")
+    progress("Completato", PROGRESS_TOTAL, f"Report pronto: {html_path}")
     return AuditResultPaths(json_path=json_path, html_path=html_path, export_dir=export_dir)
