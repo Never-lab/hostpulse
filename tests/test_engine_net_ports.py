@@ -16,8 +16,8 @@ def test_ping_latency_regex_english_and_italian() -> None:
     for line in samples:
         m = _PING_LATENCY_RE.search(line)
         assert m, line
-        times.append(int(m.group(1)))
-    assert times == [12, 8, 4, 15]
+        times.append(float(m.group(1)))
+    assert times == [12.0, 8.0, 4.0, 15.0]
 
 
 def test_check_app_port_open_and_closed() -> None:

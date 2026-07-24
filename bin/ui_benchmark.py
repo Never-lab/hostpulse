@@ -65,7 +65,7 @@ class AuditApp(ctk.CTk):
 
         subtitle = ctk.CTkLabel(
             header,
-            text="Benchmark completo di sistema, con design 2026: pulito, leggibile, zero terminale.",
+            text="Benchmark completo di sistema: report HTML, diagnosi live, zero terminale.",
             font=ctk.CTkFont("Segoe UI", size=11),
             text_color=("#4b5563", "#9ca3af"),
         )
