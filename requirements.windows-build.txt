@@ -1,6 +1,6 @@
 # Dipendenze compatibili con Python 3.7 (build Docker cdrx/pyinstaller-windows)
 psutil==5.9.5
-customtkinter>=5.2.0,<6
+customtkinter>=6.0.0,<7
 matplotlib>=3.10.9,<3.11
 seaborn>=0.11.0,<0.13
 pandas>=1.3.0,<1.4
