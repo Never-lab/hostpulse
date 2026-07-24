@@ -43,6 +43,8 @@ Suggested starter questions (also listed in the report):
 - Where do Windows-only APIs live relative to `plat`?
 - What stamps `schema_version` onto results before the reporter runs?
 
+**Worked example:** [`TRACE_HOSTPULSEENGINE.md`](TRACE_HOSTPULSEENGINE.md) — why `HostPulseEngine` bridges orchestrator, schema, paths, and plat tests.
+
 ### Fork setup (one-time)
 
 ```bash
