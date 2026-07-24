@@ -9,6 +9,13 @@ cd bin
 python ui_benchmark.py
 ```
 
+CLI headless (senza GUI):
+
+```bash
+python bin/cli.py run --quick --production-safe --profile generic
+python bin/cli.py run --quick --out report.html --pdf
+```
+
 Dipendenze: `pip install -r requirements.txt`  
 (all’avvio da sorgente prova anche l’install automatica dei pacchetti mancanti).
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -38,8 +37,9 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_bin_dir
-from engine import HostPulseEngine
-from reporter_generator import ReportGenerator
+from cancel import AuditCancelled
+from orchestrator import run_audit
+from pdf_export import PdfExportError, html_file_to_pdf
 
 
 class AuditApp(ctk.CTk):
@@ -58,6 +58,8 @@ class AuditApp(ctk.CTk):
         self._worker_thread: threading.Thread | None = None
         self._running = False
         self._last_report_path: str | None = None
+        self._last_pdf_path: str | None = None
+        self._cancel_event = threading.Event()
 
     def _build_layout(self) -> None:
         self.grid_rowconfigure(0, weight=1)
@@ -183,20 +185,31 @@ class AuditApp(ctk.CTk):
         )
         self.open_report_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
+        self.export_pdf_button = ctk.CTkButton(
+            buttons_frame,
+            text="Esporta PDF",
+            command=self._on_export_pdf_click,
+            corner_radius=24,
+            height=34,
+            fg_color=("gray70", "#14532d"),
+            state="disabled",
+        )
+        self.export_pdf_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+
         # Barra di avanzamento
         progress_label = ctk.CTkLabel(
             left_card,
             text="Stato analisi",
             font=ctk.CTkFont("Segoe UI", size=11, weight="bold"),
         )
-        progress_label.grid(row=7, column=0, sticky="w", padx=18, pady=(0, 4))
+        progress_label.grid(row=8, column=0, sticky="w", padx=18, pady=(0, 4))
 
         self.progress = ctk.CTkProgressBar(
             left_card,
             height=10,
             corner_radius=999,
         )
-        self.progress.grid(row=8, column=0, sticky="ew", padx=18)
+        self.progress.grid(row=9, column=0, sticky="ew", padx=18)
         self.progress.set(0)
 
         self.progress_label = ctk.CTkLabel(
@@ -205,7 +218,7 @@ class AuditApp(ctk.CTk):
             font=ctk.CTkFont("Segoe UI", size=10),
             text_color=("#4b5563", "#9ca3af"),
         )
-        self.progress_label.grid(row=9, column=0, sticky="w", padx=18, pady=(4, 18))
+        self.progress_label.grid(row=10, column=0, sticky="w", padx=18, pady=(4, 18))
 
         # Colonna destra (log)
         right_card = ctk.CTkFrame(center, corner_radius=16)
@@ -256,6 +269,7 @@ class AuditApp(ctk.CTk):
     def _set_last_report(self, path: str) -> None:
         self._last_report_path = path
         self.open_report_button.configure(state="normal")
+        self.export_pdf_button.configure(state="normal")
 
     # --- Event handlers ---
 
@@ -264,6 +278,7 @@ class AuditApp(ctk.CTk):
             return
         self.log_text.delete("1.0", "end")
         self.progress.set(0)
+        self._cancel_event.clear()
 
         compare = self.compare_var.get()
         quick = self.quick_var.get()
@@ -284,12 +299,9 @@ class AuditApp(ctk.CTk):
     def _on_cancel_click(self) -> None:
         if not self._running:
             return
-        # Non interrompiamo brutalmente i benchmark, ma segnaliamo l'annullamento.
-        messagebox.showinfo(
-            "Annulla",
-            "Al momento non è possibile interrompere un benchmark in corso.\n"
-            "La funzione di stop sicuro verrà aggiunta in una versione futura.",
-        )
+        self._cancel_event.set()
+        self._append_log("Annullamento richiesto: stop cooperativo in corso...")
+        self._set_status("Annullamento...", None)
 
     def _on_open_report_click(self) -> None:
         if not self._last_report_path or not os.path.isfile(self._last_report_path):
@@ -300,131 +312,60 @@ class AuditApp(ctk.CTk):
         except Exception:
             messagebox.showerror("Errore", f"Impossibile aprire il report:\n{self._last_report_path}")
 
+    def _on_export_pdf_click(self) -> None:
+        if not self._last_report_path or not os.path.isfile(self._last_report_path):
+            messagebox.showwarning("PDF", "Nessun report HTML disponibile.")
+            return
+        try:
+            pdf_path = html_file_to_pdf(self._last_report_path)
+            self._last_pdf_path = str(pdf_path)
+            self._append_log(f"PDF esportato: {pdf_path}")
+            messagebox.showinfo("PDF", f"PDF creato:\n{pdf_path}")
+        except PdfExportError as exc:
+            messagebox.showerror("PDF", str(exc))
+
     # --- Lavoro in background ---
 
     def _run_audit_worker(self, compare: bool, quick: bool, production_safe: bool, profile: str) -> None:
         try:
-            self.after(0, self._set_status, "Preparazione motore analisi...", 0)
             ensure_runtime_dirs()
             benchmark_root = str(get_app_base_dir())
-            engine = HostPulseEngine(
-                root_dir=benchmark_root,
-                quick=quick,
-                profile=profile,
-                production_safe=production_safe,
-            )
-            hostname = engine.data["meta"]["hostname"]
-
-            self.after(
-                0,
-                self._append_log,
-                f"Target: {hostname} | Admin: {engine.data['meta']['is_admin']}",
-            )
-
-            # 1/4 – Sistema & CPU
-            self.after(0, self._set_status, "Analisi sistema & CPU...", 1)
-            self.after(0, self._append_log, "[1/4] Raccolta informazioni di sistema...")
-            engine.collect_sys_info()
-
-            if profile == "app_server" and engine.config.get("APP_PORT_CHECK") is not None:
-                self.after(0, self._append_log, "[1/4] Verifica porta applicativa...")
-                engine.check_app_port()
-
-            self.after(0, self._append_log, "[1/4] CPU benchmark in corso...")
-            engine.cpu_benchmark_suite()
-
-            self.after(0, self._append_log, "[1/4] CPU real-world test...")
-            engine.cpu_real_world()
-            self.after(0, self._append_log, "[1/4] CPU: completato.")
-
-            # RAM & rete
-            self.after(0, self._append_log, "[1/4] RAM bandwidth test...")
-            engine.ram_benchmark()
-
-            self.after(0, self._append_log, "[1/4] Network latency test...")
-            engine.net_benchmark()
-
-            # 2/4 – Storage
-            self.after(0, self._set_status, "Benchmark storage (Seq & IOPS)...", 2)
-            self.after(0, self._append_log, "[2/4] Benchmark disco in corso...")
-            engine.disk_benchmarks()
-            self.after(0, self._append_log, "[2/4] Storage: completato (MB/s, IOPS, latenze).")
-
-            if not production_safe and not engine.skip_chaos:
-                self.after(0, self._append_log, "[2/4] Chaos test (IOPS sotto carico CPU)...")
-                engine.chaos_disk_under_load()
-                chaos = engine.data["benchmark"]["chaos"]
-                if chaos.get("active"):
-                    self.after(
-                        0,
-                        self._append_log,
-                        f"[2/4] Chaos: impatto IOPS {chaos.get('impact_pct', 0)}%.",
-                    )
-                else:
-                    self.after(0, self._append_log, "[2/4] Chaos: completato (nessun degrado significativo).")
-
-            # 3/4 – Salvataggio
-            self.after(0, self._set_status, "Salvataggio risultati...", 3)
-            self.after(0, self._append_log, "[3/4] Salvataggio risultati su disco...")
-            json_path = engine.save_results()
-            self.after(0, self._append_log, f"Risultati salvati in: {json_path}")
-
-            # 4/4 – Reportistica
-            self.after(0, self._set_status, "Generazione report...", 4)
-            self.after(0, self._append_log, "[4/4] Generazione report & asset...")
-
-            if compare:
-                history = engine.get_history()
-                baseline_path = os.path.join(benchmark_root, "config", "baseline.json")
-                ref = None
-                if os.path.isfile(baseline_path):
-                    try:
-                        with open(baseline_path, "r", encoding="utf-8") as bf:
-                            ref = json.load(bf)
-                    except (json.JSONDecodeError, OSError):
-                        ref = None
-                reporter = ReportGenerator(history, reference=ref, style="corporate")
-            else:
-                baseline_path = os.path.join(benchmark_root, "config", "baseline.json")
-                ref = None
-                if os.path.isfile(baseline_path):
-                    try:
-                        with open(baseline_path, "r", encoding="utf-8") as bf:
-                            ref = json.load(bf)
-                    except (json.JSONDecodeError, OSError):
-                        ref = None
-                reporter = ReportGenerator(engine.data, reference=ref, style="corporate")
-
-            # Export asset
             bin_dir = str(get_bin_dir())
-            export_dir = os.path.join(bin_dir, "exports", "slides")
-            os.makedirs(export_dir, exist_ok=True)
-            reporter.export_presentation_assets(export_dir)
 
-            report_html = f"REPORT_{engine.data['meta']['hostname']}.html"
-            report_path = os.path.join(bin_dir, report_html)
-            with open(report_path, "w", encoding="utf-8") as f:
-                f.write(reporter.render())
+            def on_progress(status: str, step: int, log: str) -> None:
+                self.after(0, self._set_status, status, step)
+                self.after(0, self._append_log, log)
 
-            self.after(
-                0,
-                self._append_log,
-                f"Processo completato! Report HTML: {report_path}",
+            result = run_audit(
+                root_dir=benchmark_root,
+                bin_dir=bin_dir,
+                profile=profile,
+                quick=quick,
+                production_safe=production_safe,
+                compare=compare,
+                cancel_event=self._cancel_event,
+                on_progress=on_progress,
             )
-            self.after(0, lambda p=report_path: self._set_last_report(p))
+            self.after(0, lambda p=result.html_path: self._set_last_report(p))
             self.after(
                 0,
                 lambda: messagebox.showinfo(
                     "Analisi completata",
-                    f"Analisi completata con successo.\n\nReport generato:\n{report_path}",
+                    f"Analisi completata con successo.\n\nReport generato:\n{result.html_path}",
+                ),
+            )
+        except AuditCancelled:
+            self.after(0, self._append_log, "Analisi annullata.")
+            self.after(0, self._set_status, "Annullata", 0)
+            self.after(
+                0,
+                lambda: messagebox.showinfo(
+                    "Annullata",
+                    "Analisi interrotta. File temporanei ripuliti dove possibile.",
                 ),
             )
         except Exception as exc:  # noqa: BLE001
-            self.after(
-                0,
-                self._append_log,
-                f"ERRORE: {exc}",
-            )
+            self.after(0, self._append_log, f"ERRORE: {exc}")
             self.after(
                 0,
                 lambda err=exc: messagebox.showerror(

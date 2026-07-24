@@ -2,6 +2,7 @@ import os, psutil, platform, time, multiprocessing, json, ctypes, statistics, ra
 from datetime import datetime
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_config_dir, get_results_dir
+from cancel import check_cancel
 from schema import stamp_audit
 
 _PING_LATENCY_RE = re.compile(
@@ -82,6 +83,9 @@ class HostPulseEngine:
         self.data = self._init_data_structure()
         self.data["meta"]["profile"] = self.profile
         stamp_audit(self.data, quick=self.quick, production_safe=self.production_safe)
+
+    def _check_cancel(self):
+        check_cancel(getattr(self, "cancel_event", None))
 
     def _init_data_structure(self):
         return {
@@ -373,6 +377,7 @@ class HostPulseEngine:
         # Carico CPU pesante per misurare jitter e coerenza (molte iterazioni, lavoro consistente)
         all_times = []
         for _ in range(8):
+            self._check_cancel()
             times = [
                 (time.perf_counter(), sum(i * i for i in range(60000)), time.perf_counter())
                 for _ in range(60)
@@ -398,12 +403,16 @@ class HostPulseEngine:
 
         def random_spike_load():
             for _ in range(points):
-                if stop_spike.is_set():
+                if stop_spike.is_set() or (
+                    getattr(self, "cancel_event", None) is not None and self.cancel_event.is_set()
+                ):
                     break
                 spike = random.uniform(0.25, 1.0)  # frazione del secondo a 100% CPU
                 end_t = time.perf_counter() + interval
                 burn_until = time.perf_counter() + spike
                 while time.perf_counter() < burn_until and not stop_spike.is_set():
+                    if getattr(self, "cancel_event", None) and self.cancel_event.is_set():
+                        break
                     hashlib.sha256(os.urandom(1024)).hexdigest()
                 remaining = end_t - time.perf_counter()
                 if remaining > 0:
@@ -416,6 +425,7 @@ class HostPulseEngine:
         start = time.perf_counter()
         try:
             for _ in range(points):
+                self._check_cancel()
                 usage = psutil.cpu_percent(interval=interval)
                 freq = psutil.cpu_freq().current if psutil.cpu_freq() else 0
                 t_rel = time.perf_counter() - start
@@ -498,7 +508,9 @@ class HostPulseEngine:
             total_bytes = 0
             with open(path, "rb") as f:
                 file_size = sz_mb * 1024 * 1024
-                for _ in range(iterations):
+                for i in range(iterations):
+                    if i % 500 == 0:
+                        self._check_cancel()
                     offset = random.randint(0, max(0, file_size - block_size))
                     t0 = time.perf_counter()
                     f.seek(offset)
@@ -626,6 +638,7 @@ class HostPulseEngine:
         """
         if self.skip_chaos:
             return
+        self._check_cancel()
         chaos = self.data["benchmark"]["chaos"]
         chaos["active"] = False
 

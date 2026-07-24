@@ -22,7 +22,11 @@ a = Analysis(
     datas=extra_datas,
     hiddenimports=[
         "app_paths",
+        "cancel",
+        "cli",
         "engine",
+        "orchestrator",
+        "pdf_export",
         "reporter_generator",
         "schema",
         "version",
