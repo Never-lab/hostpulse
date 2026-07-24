@@ -1,14 +1,14 @@
-import os, psutil, platform, time, multiprocessing, json, ctypes, statistics, random, re, socket, tempfile, hashlib, zlib, subprocess, threading
+import os, psutil, platform, time, multiprocessing, json, statistics, random, socket, tempfile, hashlib, zlib, subprocess, threading
 from datetime import datetime
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_config_dir, get_results_dir
 from cancel import check_cancel
+from plat import get_adapter, parse_ping_latencies_ms
 from schema import stamp_audit
 
-_PING_LATENCY_RE = re.compile(
-    r"(?:time|tempo|durata)\s*[=<]\s*<?\s*(\d+)",
-    re.IGNORECASE,
-)
+# Re-export for existing tests
+from plat import _PING_MS_RE as _PING_LATENCY_RE  # noqa: F401
+
 _HIGH_PERF_PLAN_KEYWORDS = (
     "high performance",
     "alte prestazioni",
@@ -17,6 +17,8 @@ _HIGH_PERF_PLAN_KEYWORDS = (
     "ultimate power",
     "maximum performance",
     "prestazioni massime",
+    "performance",
+    "schedutil",
 )
 
 
@@ -70,6 +72,7 @@ class HostPulseEngine:
         self.results_dir = str(get_results_dir())
         self.quick = quick
         self.skip_chaos = False
+        self.plat = get_adapter()
 
         self.config = self._load_config()
         if self.quick:
@@ -93,7 +96,7 @@ class HostPulseEngine:
                 "hostname": platform.node(),
                 "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "timestamp": int(time.time()),
-                "is_admin": self._is_admin(),
+                "is_admin": self.plat.is_elevated(),
             },
             "sys_info": {
                 "power_plan": "N/A",
@@ -143,15 +146,6 @@ class HostPulseEngine:
             "app_server": {"ports": {}},
         }
 
-    def _is_admin(self):
-        """Restituisce True se l'utente ha privilegi elevati. Solo Windows; su altri OS ritorna False."""
-        try:
-            if platform.system() != "Windows":
-                return False
-            return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]
-        except Exception:
-            return False
-
     def _load_config(self):
         default = {
             "CPU_GRAPH_DURATION_SEC": 300,
@@ -194,13 +188,6 @@ class HostPulseEngine:
         self.config["DISK_IOPS_ITERATIONS"] = min(3000, self.config.get("DISK_IOPS_ITERATIONS", 10000))
         self.skip_chaos = True
 
-    def run_ps(self, cmd):
-        try:
-            full_cmd = f'powershell -NoProfile -Command "{cmd}"'
-            return subprocess.check_output(full_cmd, shell=True, text=True, stderr=subprocess.STDOUT, timeout=5).strip()
-        except Exception:
-            return None
-
     # --- METODI DI TEST (Logica v5 Originale) ---
 
     def _push_health(self, level, code, message):
@@ -220,11 +207,12 @@ class HostPulseEngine:
         info["cpu_model"] = platform.processor()
         info["cores"] = f"{psutil.cpu_count(logical=False)} P / {psutil.cpu_count(logical=True)} L"
         info["uptime"] = str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
-        
+
         ram = psutil.virtual_memory()
+        snap = self.plat.collect_infra()
         self.data["ram_hw"] = {
             "total_gb": round(ram.total / (1024**3), 2),
-            "speed_mhz": self._get_ram_speed(),
+            "speed_mhz": snap.ram_speed_mhz if snap.ram_speed_mhz is not None else 0,
             "percent_used": ram.percent,
             "swap_percent": psutil.swap_memory().percent if hasattr(psutil, "swap_memory") else 0,
         }
@@ -235,39 +223,22 @@ class HostPulseEngine:
             "percent_used": du.percent,
         }
 
-        # Arricchimento campi infrastrutturali specifici Windows
-        if platform.system().lower().startswith("win"):
-            # Power plan attivo
-            try:
-                plan = self.run_ps("(powercfg /GETACTIVESCHEME) -match '\\((.+)\\)' | Out-Null; $matches[1]")
-                if plan:
-                    info["power_plan"] = plan.strip()
-            except Exception:
-                pass
+        if snap.power_plan:
+            info["power_plan"] = snap.power_plan
+        if snap.numa_nodes is not None:
+            info["numa_nodes"] = snap.numa_nodes
 
-            # Numero di nodi NUMA (se disponibile)
-            try:
-                numa_raw = self.run_ps("(Get-WmiObject -Class Win32_NumaNode | Measure-Object).Count")
-                if numa_raw and numa_raw.strip().isdigit():
-                    info["numa_nodes"] = int(numa_raw.strip())
-            except Exception:
-                pass
+        virt = self.data["virtualization"]
+        if snap.cpu_queue_length is not None:
+            virt["cpu_queue_length"] = snap.cpu_queue_length
+        if snap.ctx_switches_sec is not None:
+            virt["ctx_switches_sec"] = snap.ctx_switches_sec
+        if snap.is_vm:
+            virt["is_vm"] = True
+            virt["hypervisor"] = snap.hypervisor or virt.get("hypervisor") or ""
 
-            virt = self.data["virtualization"]
-            # Performance counters: System Processor Queue Length e Context Switches/sec
-            try:
-                qlen_raw = self.run_ps("(Get-Counter '\\\\System\\\\Processor Queue Length').CounterSamples[0].CookedValue")
-                if qlen_raw is not None:
-                    virt["cpu_queue_length"] = float(qlen_raw)
-            except Exception:
-                pass
-
-            try:
-                ctx_raw = self.run_ps("(Get-Counter '\\\\System\\\\Context Switches/sec').CounterSamples[0].CookedValue")
-                if ctx_raw is not None:
-                    virt["ctx_switches_sec"] = float(ctx_raw)
-            except Exception:
-                pass
+        for code, message in snap.gaps:
+            self._push_health("INFO", code, message)
 
         # Soglie di health di base
         warn_disk = int(self.config.get("WARN_DISK_PERCENT", 85))
@@ -294,52 +265,32 @@ class HostPulseEngine:
                 f"Swap utilizzata al {swap_p}%.",
             )
 
-        # Health rules legate ai nuovi campi infrastrutturali (solo se significativi)
-        if platform.system().lower().startswith("win"):
-            plan = info.get("power_plan", "") or ""
-            plan_lower = plan.lower()
-            if plan and not any(x in plan_lower for x in _HIGH_PERF_PLAN_KEYWORDS):
-                self._push_health(
-                    "WARN",
-                    "POWER_PLAN_NOT_HIGH_PERF",
-                    f"Piano energetico attivo non ad alte prestazioni: '{plan}'.",
-                )
+        plan = info.get("power_plan", "") or ""
+        plan_lower = plan.lower()
+        if plan and plan != "N/A" and not any(x in plan_lower for x in _HIGH_PERF_PLAN_KEYWORDS):
+            self._push_health(
+                "WARN",
+                "POWER_PLAN_NOT_HIGH_PERF",
+                f"Piano energetico attivo non ad alte prestazioni: '{plan}'.",
+            )
 
-            virt = self.data["virtualization"]
-            cpu_q = float(virt.get("cpu_queue_length", 0) or 0)
-            ctx_s = float(virt.get("ctx_switches_sec", 0) or 0)
+        cpu_q = float(virt.get("cpu_queue_length", 0) or 0)
+        ctx_s = float(virt.get("ctx_switches_sec", 0) or 0)
+        warn_q = float(self.config.get("WARN_CPU_QUEUE_LENGTH", 4))
+        warn_ctx = float(self.config.get("WARN_CTX_SWITCHES_SEC", 50000))
 
-            warn_q = float(self.config.get("WARN_CPU_QUEUE_LENGTH", 4))
-            warn_ctx = float(self.config.get("WARN_CTX_SWITCHES_SEC", 50000))
-
-            if cpu_q >= warn_q:
-                self._push_health(
-                    "WARN",
-                    "CPU_QUEUE_LENGTH_HIGH",
-                    f"System Processor Queue Length elevato: {cpu_q:.1f} (soglia {warn_q}).",
-                )
-            if ctx_s >= warn_ctx:
-                self._push_health(
-                    "WARN",
-                    "CTX_SWITCHES_HIGH",
-                    f"Context Switches/sec elevati: {int(ctx_s)} (soglia {int(warn_ctx)}).",
-                )
-
-        # Rilevazione base virtualizzazione / hypervisor
-        virt = self.data["virtualization"]
-        try:
-            system = platform.uname().system.lower()
-            release = platform.uname().release.lower()
-            if "microsoft" in release or "hyper-v" in release:
-                virt["is_vm"] = True
-                virt["hypervisor"] = "Hyper-V/WSL"
-            # quick check via system manufacturer (wmic)
-            out = self.run_ps("(Get-WmiObject Win32_ComputerSystem).Manufacturer")
-            if out and any(x in out.lower() for x in ["vmware", "qemu", "kvm", "xen"]):
-                virt["is_vm"] = True
-                virt["hypervisor"] = out.strip()
-        except Exception:
-            pass
+        if snap.cpu_queue_length is not None and cpu_q >= warn_q:
+            self._push_health(
+                "WARN",
+                "CPU_QUEUE_LENGTH_HIGH",
+                f"System Processor Queue Length elevato: {cpu_q:.1f} (soglia {warn_q}).",
+            )
+        if snap.ctx_switches_sec is not None and ctx_s >= warn_ctx:
+            self._push_health(
+                "WARN",
+                "CTX_SWITCHES_HIGH",
+                f"Context Switches/sec elevati: {int(ctx_s)} (soglia {int(warn_ctx)}).",
+            )
 
         if virt.get("is_vm"):
             hypervisor = virt.get("hypervisor") or "sconosciuto"
@@ -348,30 +299,6 @@ class HostPulseEngine:
                 "VM_DETECTED",
                 f"VM rilevata (hypervisor: {hypervisor}). Verificare risorse dedicate e memoria (ballooning).",
             )
-
-    def _get_ram_speed(self):
-        """Velocità RAM in MHz (solo Windows). Su altri OS ritorna 0."""
-        try:
-            if platform.system() != "Windows":
-                return 0
-            ps_out = self.run_ps(
-                "(Get-CimInstance Win32_PhysicalMemory | "
-                "Where-Object { $_.Speed -gt 0 } | "
-                "Measure-Object -Property Speed -Maximum).Maximum"
-            )
-            if ps_out and ps_out.strip().isdigit():
-                return int(ps_out.strip())
-            wmic = subprocess.run(
-                "wmic memorychip get speed",
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            speeds = [int(s) for s in wmic.stdout.split() if s.isdigit() and int(s) > 0]
-            return max(speeds) if speeds else 0
-        except Exception:
-            return 0
 
     def cpu_benchmark_suite(self):
         # Carico CPU pesante per misurare jitter e coerenza (molte iterazioni, lavoro consistente)
@@ -571,8 +498,7 @@ class HostPulseEngine:
         """Ping semplice per stimare latenza media e jitter."""
         target = self.config.get("PING_TARGET", "8.8.8.8")
         try:
-            # -n (Windows) numero pacchetti, -w timeout ms
-            cmd = ["ping", "-n", "6", "-w", "1000", target]
+            cmd = self.plat.ping_argv(target, count=6)
             out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
         except Exception as exc:
             self._push_health(
@@ -582,12 +508,7 @@ class HostPulseEngine:
             )
             return
 
-        times = []
-        for line in out.splitlines():
-            m = _PING_LATENCY_RE.search(line)
-            if m:
-                times.append(int(m.group(1)))
-
+        times = parse_ping_latencies_ms(out)
         if times:
             avg = statistics.mean(times)
             jitter = statistics.pstdev(times) if len(times) > 1 else 0
