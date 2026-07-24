@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from datetime import datetime
 
 try:
     from app_paths import get_config_dir

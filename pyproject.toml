@@ -1,0 +1,21 @@
+[project]
+name = "hostpulse"
+version = "0.1.0"
+description = "Hardware/OS benchmark for Windows VMs (app/DB server), Linux-ready design"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Never-lab" }]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["bin", "tests"]
+
+[tool.ruff.lint]
+# Keep CI green on legacy bin/ code: catch real bugs, not style churn.
+select = ["E9", "F63", "F7", "F82", "F401", "F811", "F821"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["bin"]

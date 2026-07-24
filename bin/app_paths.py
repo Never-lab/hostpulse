@@ -1,7 +1,6 @@
 """Percorsi compatibili con esecuzione da sorgente e da EXE PyInstaller."""
 from __future__ import annotations
 
-import os
 import shutil
 import sys
 from pathlib import Path

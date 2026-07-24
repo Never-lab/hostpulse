@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "hostname": "ci-fixture",
+    "date": "2026-07-24 12:00:00",
+    "timestamp": 1721822400,
+    "is_admin": false,
+    "profile": "generic"
+  },
+  "sys_info": {
+    "power_plan": "N/A",
+    "numa_nodes": 1,
+    "os": "Windows 11",
+    "cpu_model": "CI CPU",
+    "cores": "2 P / 4 L",
+    "uptime": "1:00:00"
+  },
+  "virtualization": {
+    "is_vm": true,
+    "hypervisor": "CI",
+    "cpu_queue_length": 0,
+    "ctx_switches_sec": 0
+  },
+  "ram_hw": {
+    "total_gb": 8,
+    "speed_mhz": 0,
+    "percent_used": 40,
+    "swap_percent": 0
+  },
+  "disk_hw": {
+    "total_gb": 100,
+    "free_gb": 60,
+    "percent_used": 40
+  },
+  "health": {
+    "events": []
+  },
+  "benchmark": {
+    "cpu_consistency": {
+      "jitter_score": 95,
+      "avg_task_ms": 1.5,
+      "stability_score": 90
+    },
+    "cpu_real": {
+      "crypto_hash_rate": 2000,
+      "compress_mb_s": 20
+    },
+    "cpu_series": {
+      "time": [0, 1, 2],
+      "usage": [10, 20, 15],
+      "freq": [2000, 2000, 2000]
+    },
+    "disk": {
+      "seq_write_mb": 300,
+      "seq_read_mb": 400,
+      "iops": 5000,
+      "latency_p99_ms": 2,
+      "db_sim_latency_ms": 1
+    },
+    "ram_perf": {
+      "copy_speed_gb": 2.5
+    },
+    "net": {
+      "avg_ms": 10,
+      "jitter_ms": 1
+    },
+    "chaos": {
+      "active": false,
+      "disk_iops_under_load": 0,
+      "impact_pct": 0
+    }
+  },
+  "app_server": {
+    "ports": {}
+  }
+}

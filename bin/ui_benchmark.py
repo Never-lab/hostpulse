@@ -427,9 +427,9 @@ class AuditApp(ctk.CTk):
             )
             self.after(
                 0,
-                lambda: messagebox.showerror(
+                lambda err=exc: messagebox.showerror(
                     "Errore durante l'analisi",
-                    f"Si è verificato un errore:\n{exc}",
+                    f"Si è verificato un errore:\n{err}",
                 ),
             )
         finally:
