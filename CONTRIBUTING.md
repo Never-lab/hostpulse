@@ -21,7 +21,6 @@ Windows EXE smoke: `.\scripts\verify_local.ps1` (optional `-BuildExe`).
 ## PR norms
 
 - Commits and PR titles in **English**
-- No `Co-authored-by: Cursor` (or similar) trailers
 - Prefer extending `bin/plat.py` for OS-specific probes — keep `engine.py` portable
 - Report / schema changes: update [`docs/SCHEMA.md`](docs/SCHEMA.md) when the JSON contract moves
 
