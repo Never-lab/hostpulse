@@ -15,5 +15,6 @@ def test_render_html_from_fixture() -> None:
     assert "HostPulse" in html
     assert "ci-fixture" in html
     assert "Health Score" in html
-    # Offline-friendly: phase-1 will remove CDNs; until then just ensure render works.
+    # Offline self-contained HTML (no CDN).
     assert len(html) > 500
+    assert "cdn.jsdelivr.net" not in html

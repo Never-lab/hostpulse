@@ -671,6 +671,73 @@ class ReportGenerator:
         sign = "+" if delta > 0 else ""
         return f'<div style="color:{color};font-size:11px;font-weight:bold;">{sign}{delta}% vs Ref</div>'
 
+    def _run_flags_label(self, meta):
+        flags = []
+        if meta.get("quick"):
+            flags.append("Quick")
+        if meta.get("production_safe"):
+            flags.append("Production-safe")
+        return " · ".join(flags) if flags else "Full load"
+
+    def _how_to_read(self, profile):
+        profile_note = {
+            "db_server": "Profilo DB Server: soglie più strette su latenza/IOPS disco (workload transazionale).",
+            "app_server": "Profilo Application Server: oltre alle metriche host, verifica porte applicative se configurate.",
+            "generic": "Profilo Generico: soglie bilanciate per una VM generica.",
+        }.get(profile, "Profilo personalizzato.")
+        return (
+            "<ul>"
+            f"<li>{profile_note}</li>"
+            "<li><b>Health Score</b> aggrega le metriche scorable (OK/WARN/CRIT) in un voto 0–100 e una classe A–D.</li>"
+            "<li>I badge verde/arancio/rosso confrontano il valore misurato con soglie interne (e con la baseline se presente).</li>"
+            "<li>Gli eventi Health sono segnali contestuali (piano energetico, VM, porte chiuse, ecc.), non un secondo score.</li>"
+            "<li>Questo HTML è self-contained: si apre offline anche su Server senza accesso Internet.</li>"
+            "</ul>"
+        )
+
+    def _cpu_series_svg(self, series, width=720, height=220):
+        times = list(series.get("time") or [])
+        usage = list(series.get("usage") or [])
+        freq = list(series.get("freq") or [])
+        n = min(len(times), len(usage))
+        if n < 2:
+            return "<p class='desc'>Nessuna serie CPU disponibile per questo run.</p>"
+        times = times[:n]
+        usage = usage[:n]
+        freq = freq[:n] if len(freq) >= n else [0] * n
+        pad_l, pad_r, pad_t, pad_b = 44, 48, 16, 28
+        plot_w = width - pad_l - pad_r
+        plot_h = height - pad_t - pad_b
+        t0, t1 = float(times[0]), float(times[-1])
+        span = (t1 - t0) or 1.0
+        freq_vals = [float(f) for f in freq if f]
+        fmin = min(freq_vals) if freq_vals else 0.0
+        fmax = max(freq_vals) if freq_vals else 1.0
+        if fmax <= fmin:
+            fmax = fmin + 1.0
+
+        def x_at(t):
+            return pad_l + ((float(t) - t0) / span) * plot_w
+
+        def y_usage(u):
+            return pad_t + (1.0 - max(0.0, min(100.0, float(u))) / 100.0) * plot_h
+
+        def y_freq(f):
+            return pad_t + (1.0 - (float(f) - fmin) / (fmax - fmin)) * plot_h
+
+        usage_pts = " ".join(f"{x_at(t):.1f},{y_usage(u):.1f}" for t, u in zip(times, usage))
+        freq_pts = " ".join(f"{x_at(t):.1f},{y_freq(f):.1f}" for t, f in zip(times, freq))
+        return f"""
+<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img" aria-label="CPU usage and frequency">
+  <rect x="{pad_l}" y="{pad_t}" width="{plot_w}" height="{plot_h}" fill="#f8fafc" stroke="#e2e8f0"/>
+  <polyline fill="none" stroke="#dc2626" stroke-width="2" points="{usage_pts}"/>
+  <polyline fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4" points="{freq_pts}"/>
+  <text x="{pad_l}" y="12" font-size="11" fill="#64748b">CPU % (rosso) · MHz (grigio tratteggiato)</text>
+  <text x="{pad_l}" y="{height - 8}" font-size="10" fill="#94a3b8">{times[0]}s → {times[-1]}s</text>
+  <text x="8" y="{pad_t + 10}" font-size="10" fill="#94a3b8">100</text>
+  <text x="8" y="{pad_t + plot_h}" font-size="10" fill="#94a3b8">0</text>
+</svg>"""
+
     def render(self):
         data = self.main_d
         meta = data.get("meta", {})
@@ -681,16 +748,14 @@ class ReportGenerator:
         bench = data.get("benchmark", {})
         profile = meta.get("profile", "generic")
 
-        c_series = bench.get("cpu_series", {})
-        c_time = json.dumps(c_series.get("time", []))
-        c_usage = json.dumps(c_series.get("usage", []))
-        c_freq = json.dumps(c_series.get("freq", []))
-
         hostname = meta.get("hostname", "N/A")
         ref_mode = "ACTIVE (vs baseline)" if self.ref else ("COMPARE (" + str(len(self.data_list)) + " host)" if len(self.data_list) > 1 else "SINGLE RUN")
+        run_flags = self._run_flags_label(meta)
+        cpu_svg = self._cpu_series_svg(bench.get("cpu_series", {}))
 
         summary_html = "".join(f"<li>{b}</li>" for b in self._executive_summary())
         recs_html = "".join(f"<li>{r}</li>" for r in self._recommendations())
+        how_html = self._how_to_read(profile)
 
         metric_rows = ""
         for m in self.analyses:
@@ -763,24 +828,24 @@ class ReportGenerator:
 
         ram_speed = ram.get("speed_mhz") or 0
         ram_speed_txt = f"{ram_speed} MHz" if ram_speed else "n/d"
+        schema_v = data.get("schema_version", "?")
+        engine_v = data.get("engine_version", "?")
 
         score_status = self.overall["status"]
         return f"""<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8">
 <title>Audit — {hostname}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono&display=swap" rel="stylesheet">
 <style>
 :root {{ --bg:#f8fafc; --card:#fff; --primary:#0284c7; --border:#e2e8f0; --muted:#64748b; }}
-body {{ font-family:'Inter',sans-serif; background:var(--bg); color:#1e293b; margin:0; padding:32px; line-height:1.5; }}
+body {{ font-family:Segoe UI,system-ui,-apple-system,sans-serif; background:var(--bg); color:#1e293b; margin:0; padding:32px; line-height:1.5; }}
 .container {{ max-width:1200px; margin:auto; }}
 .header {{ display:flex; justify-content:space-between; gap:20px; border-bottom:2px solid var(--border); padding-bottom:20px; margin-bottom:24px; }}
 h1 {{ margin:0 0 6px; font-size:26px; color:#0f172a; }}
 .sub {{ color:var(--muted); font-size:14px; }}
 .sys-box {{ background:#f1f5f9; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-size:12px; margin-top:12px; }}
 .score-box {{ text-align:center; min-width:120px; padding:12px 16px; border-radius:12px; border:1px solid var(--border); background:#fff; }}
-.score-val {{ font-family:'Roboto Mono',monospace; font-size:34px; font-weight:700; color:{STATUS_COLORS.get(score_status,'#0284c7')}; }}
+.score-val {{ font-family:Consolas,ui-monospace,monospace; font-size:34px; font-weight:700; color:{STATUS_COLORS.get(score_status,'#0284c7')}; }}
 .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:20px; }}
 .grid-2 {{ display:grid; grid-template-columns:1.4fr 1fr; gap:16px; margin-bottom:20px; }}
 @media (max-width:900px) {{ .grid-2 {{ grid-template-columns:1fr; }} .header {{ flex-direction:column; }} }}
@@ -788,19 +853,20 @@ h1 {{ margin:0 0 6px; font-size:26px; color:#0f172a; }}
 .alert-card {{ border-left:5px solid #dc2626; }}
 h3 {{ margin:0 0 12px; font-size:16px; color:#0f172a; border-bottom:1px solid var(--border); padding-bottom:8px; }}
 .label {{ font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; letter-spacing:.4px; }}
-.val {{ font-family:'Roboto Mono',monospace; font-size:26px; font-weight:600; color:#0f172a; }}
+.val {{ font-family:Consolas,ui-monospace,monospace; font-size:26px; font-weight:600; color:#0f172a; }}
 .desc {{ font-size:11px; color:var(--muted); margin-top:6px; }}
 table {{ width:100%; border-collapse:collapse; font-size:13px; }}
 th, td {{ padding:10px 8px; border-bottom:1px solid #f1f5f9; text-align:left; vertical-align:top; }}
 th {{ font-size:11px; text-transform:uppercase; color:var(--muted); }}
-.chart-box {{ height:340px; }}
+.legend span {{ margin-right:10px; }}
 ul {{ margin:8px 0 0 18px; padding:0; }}
 li {{ margin-bottom:6px; }}
+.footer {{ color:var(--muted); font-size:11px; margin-top:24px; }}
 </style></head><body><div class="container">
 <div class="header">
   <div>
     <h1>HostPulse — Report Tecnico</h1>
-    <div class="sub"><b>{hostname}</b> · {meta.get('date','N/A')} · Admin: {'Sì' if meta.get('is_admin') else 'No'}</div>
+    <div class="sub"><b>{hostname}</b> · {meta.get('date','N/A')} · Admin: {'Sì' if meta.get('is_admin') else 'No'} · Modo: <b>{run_flags}</b></div>
     <div class="sys-box">
       <div><b>CPU:</b> {sys_info.get('cpu_model','N/A')} ({sys_info.get('cores','N/A')})</div>
       <div><b>OS:</b> {sys_info.get('os','N/A')} · Uptime: {sys_info.get('uptime','N/A')}</div>
@@ -819,6 +885,22 @@ li {{ margin-bottom:6px; }}
       <div class="label">Classe {self.overall['grade']}</div>
     </div>
   </div>
+</div>
+
+<div class="card">
+  <h3>Come leggere questo report</h3>
+  {how_html}
+</div>
+
+<div class="card">
+  <h3>Legenda score</h3>
+  <div class="legend">
+    <span>{self._badge('ok', 'A ≥ 85')}</span>
+    <span>{self._badge('ok', 'B ≥ 70')}</span>
+    <span>{self._badge('warn', 'C ≥ 55')}</span>
+    <span>{self._badge('crit', 'D &lt; 55')}</span>
+  </div>
+  <p class="desc">OK = nella norma · WARN = da monitorare · CRIT = intervento consigliato · INFO = contesto</p>
 </div>
 
 <div class="card">
@@ -866,28 +948,8 @@ li {{ margin-bottom:6px; }}
 
 <div class="card">
   <h3>CPU Load vs Frequenza (stress test)</h3>
-  <div class="chart-box"><canvas id="cpuChart"></canvas></div>
+  {cpu_svg}
 </div>
 
-<script>
-const ctx = document.getElementById('cpuChart').getContext('2d');
-new Chart(ctx, {{
-  type: 'line',
-  data: {{
-    labels: {c_time},
-    datasets: [
-      {{ label: 'CPU %', data: {c_usage}, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.06)', fill: true, tension: 0.3, pointRadius: 0 }},
-      {{ label: 'MHz', data: {c_freq}, borderColor: '#64748b', borderDash: [5,5], pointRadius: 0, yAxisID: 'y1' }}
-    ]
-  }},
-  options: {{
-    responsive: true, maintainAspectRatio: false,
-    interaction: {{ mode: 'index', intersect: false }},
-    scales: {{
-      y: {{ min: 0, max: 100, title: {{ display: true, text: 'CPU %' }} }},
-      y1: {{ position: 'right', grid: {{ display: false }}, title: {{ display: true, text: 'MHz' }} }}
-    }}
-  }}
-}});
-</script>
+<div class="footer">HostPulse engine {engine_v} · schema v{schema_v} · report offline self-contained</div>
 </div></body></html>"""
