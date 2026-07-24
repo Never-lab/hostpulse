@@ -14,6 +14,9 @@ Dipendenze: `pip install -r requirements.txt`
 
 Dev / CI: `pip install -r requirements.txt -r requirements-dev.txt` poi `pytest -q` e `ruff check bin tests`.
 
+Verifica locale (Windows): `.\scripts\verify_local.ps1`  
+Con build EXE: `.\scripts\verify_local.ps1 -BuildExe`
+
 ## Config
 
 Copia `config/config.example.json` → `config/config.json` e adatta profilo / soglie.
