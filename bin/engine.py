@@ -472,7 +472,9 @@ class HostPulseEngine:
                 path = tf.name
                 tf.close()
             except (OSError, PermissionError):
-                path = tempfile.mktemp(prefix="hostpulse_", suffix=".tmp")
+                tf = tempfile.NamedTemporaryFile(delete=False, prefix="hostpulse_", suffix=".tmp")
+                path = tf.name
+                tf.close()
                 self._push_health(
                     "WARN",
                     "DISK_TEST_PATH_INVALID",

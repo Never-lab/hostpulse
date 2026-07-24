@@ -17,7 +17,7 @@ python bin/cli.py run --quick --out report.html --pdf
 ```
 
 Dipendenze: `pip install -r requirements.txt`  
-(all’avvio da sorgente prova anche l’install automatica dei pacchetti mancanti).
+(se manca un package all’avvio GUI, HostPulse esce con un messaggio chiaro — niente `pip install` automatico).
 
 Dev / CI: `pip install -r requirements.txt -r requirements-dev.txt` poi `pytest -q` e `ruff check bin tests`.
 
