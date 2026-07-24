@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv*/
+venv/
+
+# Build / release binaries (use GitHub Releases for EXE)
+dist/
+build/
+*.exe
+
+# Runtime / local data
+results/
+output/
+Clienti Testati/
+bin/results/
+bin/exports/
+bin/*.html
+
+# Graphify cache (regenerate locally)
+graphify-out/
+
+# Local overrides (example stays tracked)
+config/config.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,12 @@
+{
+    "CPU_GRAPH_DURATION_SEC": 60,
+    "RAM_TEST_SIZE_MB": 1024,
+    "DISK_SEQ_MB": 1024,
+    "DISK_IOPS_ITERATIONS": 10000,
+    "PING_TARGET": "8.8.8.8",
+    "PROFILE": "generic",
+    "PRODUCTION_SAFE": false,
+    "WARN_DB_LATENCY_MS": 10,
+    "DISK_TEST_PATH": "",
+    "APP_PORT_CHECK": null
+}

@@ -1,0 +1,7 @@
+.venv-test/
+**/.venv*/
+**/results/
+**/output/
+**/dist/
+**/__pycache__/
+**/Clienti Testati/

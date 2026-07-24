@@ -1,0 +1,9 @@
+# Extreme Audit v5 - Benchmark e report
+psutil>=5.9.0
+customtkinter>=5.2.0
+matplotlib>=3.5.0
+seaborn>=0.12.0
+pandas>=1.5.0
+numpy>=1.21.0
+
+# Solo per build EXE (opzionale): pip install pyinstaller
