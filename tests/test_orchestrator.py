@@ -5,7 +5,11 @@ from threading import Event
 import pytest
 
 from cancel import AuditCancelled
-from orchestrator import run_audit
+from orchestrator import PROGRESS_TOTAL, run_audit
+
+
+def test_progress_total_matches_bar() -> None:
+    assert PROGRESS_TOTAL == 6
 
 
 def test_run_audit_respects_cancel(tmp_path, monkeypatch) -> None:

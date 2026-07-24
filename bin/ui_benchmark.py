@@ -18,7 +18,7 @@ from tkinter import messagebox
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_bin_dir
 from cancel import AuditCancelled
 from load_safety import needs_full_load_confirm
-from orchestrator import run_audit
+from orchestrator import PROGRESS_TOTAL, run_audit
 from pdf_export import PdfExportError, html_file_to_pdf
 
 
@@ -99,6 +99,7 @@ class AuditApp(ctk.CTk):
             values=["Generico", "Application Server", "DB Server"],
             variable=self.profile_var,
             width=180,
+            command=lambda _v: self._refresh_load_hint(),
         )
         self.profile_menu.grid(row=2, column=0, sticky="w", padx=18, pady=(2, 4))
 
@@ -115,7 +116,7 @@ class AuditApp(ctk.CTk):
 
         quick_cb = ctk.CTkCheckBox(
             left_card,
-            text="Modalità rapida (se supportata)",
+            text="Modalità rapida (carico ridotto)",
             variable=self.quick_var,
         )
         quick_cb.grid(row=4, column=0, sticky="w", padx=18, pady=(4, 0))
@@ -124,12 +125,24 @@ class AuditApp(ctk.CTk):
             left_card,
             text="Esecuzione in produzione (carico ridotto)",
             variable=self.production_safe_var,
+            command=self._refresh_load_hint,
         )
-        production_safe_cb.grid(row=5, column=0, sticky="w", padx=18, pady=(4, 12))
+        production_safe_cb.grid(row=5, column=0, sticky="w", padx=18, pady=(4, 4))
+
+        self.load_hint = ctk.CTkLabel(
+            left_card,
+            text="",
+            font=ctk.CTkFont("Segoe UI", size=10),
+            text_color=("#b45309", "#fbbf24"),
+            wraplength=220,
+            justify="left",
+        )
+        self.load_hint.grid(row=6, column=0, sticky="w", padx=18, pady=(0, 8))
+        self._refresh_load_hint()
 
         # Pulsanti principali
         buttons_frame = ctk.CTkFrame(left_card, fg_color="transparent")
-        buttons_frame.grid(row=6, column=0, sticky="ew", padx=18, pady=(4, 16))
+        buttons_frame.grid(row=7, column=0, sticky="ew", padx=18, pady=(4, 16))
         buttons_frame.grid_columnconfigure(0, weight=1)
 
         self.start_button = ctk.CTkButton(
@@ -194,7 +207,7 @@ class AuditApp(ctk.CTk):
 
         self.progress_label = ctk.CTkLabel(
             left_card,
-            text="In attesa di avvio...",
+            text="In attesa · 6 passi: sistema → CPU → RAM/rete → disco → salva → report",
             font=ctk.CTkFont("Segoe UI", size=10),
             text_color=("#4b5563", "#9ca3af"),
         )
@@ -222,17 +235,24 @@ class AuditApp(ctk.CTk):
 
     # --- UI helpers ---
 
+    def _refresh_load_hint(self) -> None:
+        profile = self._profile_value_map.get(self.profile_var.get(), "generic")
+        if needs_full_load_confirm(profile, self.production_safe_var.get()):
+            self.load_hint.configure(
+                text="Attenzione: profilo server senza produzione → carico pieno sulla VM."
+            )
+        else:
+            self.load_hint.configure(text="")
+
     def _append_log(self, text: str) -> None:
         self.log_text.insert("end", text + "\n")
         self.log_text.see("end")
 
     def _set_status(self, text: str, step: int | None = None) -> None:
-        # customtkinter usa "configure" invece di "config"
         self.progress_label.configure(text=text)
         if step is not None:
-            # progress bar customtkinter va da 0.0 a 1.0
             try:
-                self.progress.set(max(0.0, min(1.0, float(step) / 4.0)))
+                self.progress.set(max(0.0, min(1.0, float(step) / float(PROGRESS_TOTAL))))
             except Exception:
                 self.progress.set(0.0)
         self.update_idletasks()
@@ -342,11 +362,12 @@ class AuditApp(ctk.CTk):
                 on_progress=on_progress,
             )
             self.after(0, lambda p=result.html_path: self._set_last_report(p))
+            self.after(0, self._set_status, "Completato — apri report o esporta PDF", PROGRESS_TOTAL)
             self.after(
                 0,
                 lambda: messagebox.showinfo(
                     "Analisi completata",
-                    f"Analisi completata con successo.\n\nReport generato:\n{result.html_path}",
+                    f"Report pronto.\n\n{result.html_path}\n\nUsa «Apri report» o «Esporta PDF».",
                 ),
             )
         except AuditCancelled:
