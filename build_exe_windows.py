@@ -14,7 +14,7 @@ def run_docker(root: Path, image: str) -> subprocess.CompletedProcess:
         ". /root/.bashrc && cd /src && "
         "python -m pip install --upgrade pip && "
         "pip install -r requirements.windows-build.txt && "
-        "pyinstaller --clean -y --dist ./dist/windows --workpath /tmp ExtremeAudit.windows.spec && "
+        "pyinstaller --clean -y --dist ./dist/windows --workpath /tmp HostPulse.windows.spec && "
         "chown -R --reference=. ./dist/windows 2>/dev/null || true"
     )
     cmd = [
@@ -22,7 +22,7 @@ def run_docker(root: Path, image: str) -> subprocess.CompletedProcess:
         "run",
         "--rm",
         "-e",
-        "EXTREME_AUDIT_EXE_NAME=ExtremeAudit",
+        "HOSTPULSE_EXE_NAME=HostPulse",
         "-v",
         f"{root}:/src/",
         "--entrypoint",
@@ -68,8 +68,8 @@ def main() -> int:
         return 1
 
     exe_candidates = [
-        root / "dist" / "windows" / "ExtremeAudit.exe",
-        root / "dist" / "ExtremeAudit.exe",
+        root / "dist" / "windows" / "HostPulse.exe",
+        root / "dist" / "HostPulse.exe",
     ]
     exe_path = next((p for p in exe_candidates if p.exists()), None)
     if exe_path is None:
@@ -80,13 +80,13 @@ def main() -> int:
                 print(f"  {p.relative_to(root)}", flush=True)
         return 1
 
-    release_dir = root / "dist" / "windows" / "ExtremeAudit"
+    release_dir = root / "dist" / "windows" / "HostPulse"
     try:
         release_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError:
-        release_dir = root / "dist" / "ExtremeAudit"
+        release_dir = root / "dist" / "HostPulse"
         release_dir.mkdir(parents=True, exist_ok=True)
-    dest_exe = release_dir / "ExtremeAudit.exe"
+    dest_exe = release_dir / "HostPulse.exe"
     shutil.copy2(exe_path, dest_exe)
 
     cfg_dir = release_dir / "config"

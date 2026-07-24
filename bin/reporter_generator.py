@@ -800,7 +800,7 @@ li {{ margin-bottom:6px; }}
 </style></head><body><div class="container">
 <div class="header">
   <div>
-    <h1>Extreme Audit v5 — Report Tecnico</h1>
+    <h1>HostPulse — Report Tecnico</h1>
     <div class="sub"><b>{hostname}</b> · {meta.get('date','N/A')} · Admin: {'Sì' if meta.get('is_admin') else 'No'}</div>
     <div class="sys-box">
       <div><b>CPU:</b> {sys_info.get('cpu_model','N/A')} ({sys_info.get('cores','N/A')})</div>

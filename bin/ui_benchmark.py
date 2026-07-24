@@ -38,7 +38,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_bin_dir
-from engine import ExtremeAuditEngine
+from engine import HostPulseEngine
 from reporter_generator import ReportGenerator
 
 
@@ -49,7 +49,7 @@ class AuditApp(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("green")
 
-        self.title("Extreme Audit v5")
+        self.title("HostPulse")
         self.geometry("900x560")
         self.minsize(780, 480)
 
@@ -76,7 +76,7 @@ class AuditApp(ctk.CTk):
 
         title = ctk.CTkLabel(
             header,
-            text="Extreme Audit v5",
+            text="HostPulse",
             font=ctk.CTkFont("Segoe UI", size=22, weight="bold"),
         )
         title.grid(row=0, column=0, sticky="w")
@@ -307,7 +307,7 @@ class AuditApp(ctk.CTk):
             self.after(0, self._set_status, "Preparazione motore analisi...", 0)
             ensure_runtime_dirs()
             benchmark_root = str(get_app_base_dir())
-            engine = ExtremeAuditEngine(
+            engine = HostPulseEngine(
                 root_dir=benchmark_root,
                 quick=quick,
                 profile=profile,

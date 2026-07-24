@@ -1,4 +1,4 @@
-# Deployment – Extreme Audit
+# Deployment – HostPulse
 
 **Contesto:** questo progetto viene distribuito e eseguito come **eseguibile (.exe) sul cliente** (non solo in ambiente di sviluppo). L’esecuzione tipica è su **VM clienti in produzione** (application server o DB server); usare il **profilo** (Generico / Application Server / DB Server) e l’opzione **Esecuzione in produzione (carico ridotto)** per adattare soglie e ridurre l’impatto.
 

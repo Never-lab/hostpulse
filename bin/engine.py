@@ -60,7 +60,7 @@ def _measure_disk_iops(iterations, seq_mb):
     return len(latencies) / total_time_s if total_time_s > 0 else 0.0
 
 
-class ExtremeAuditEngine:
+class HostPulseEngine:
     def __init__(self, root_dir=None, quick=False, profile=None, production_safe=False):
         ensure_runtime_dirs()
         self.base_path = root_dir or str(get_app_base_dir())
@@ -456,11 +456,11 @@ class ExtremeAuditEngine:
         disk_test_path = self.config.get("DISK_TEST_PATH") or ""
         if disk_test_path and os.path.isdir(disk_test_path):
             try:
-                tf = tempfile.NamedTemporaryFile(delete=False, dir=disk_test_path, prefix="extreme_audit_temp_", suffix=".tmp")
+                tf = tempfile.NamedTemporaryFile(delete=False, dir=disk_test_path, prefix="hostpulse_temp_", suffix=".tmp")
                 path = tf.name
                 tf.close()
             except (OSError, PermissionError):
-                path = tempfile.mktemp(prefix="extreme_audit_", suffix=".tmp")
+                path = tempfile.mktemp(prefix="hostpulse_", suffix=".tmp")
                 self._push_health(
                     "WARN",
                     "DISK_TEST_PATH_INVALID",

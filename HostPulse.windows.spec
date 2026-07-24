@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec per Extreme Audit v5 (build Windows)
-# Esecuzione: pyinstaller --clean --noconfirm ExtremeAudit.windows.spec
+# PyInstaller spec per HostPulse (build Windows)
+# Esecuzione: pyinstaller --clean --noconfirm HostPulse.windows.spec
 
 import os
 
@@ -49,7 +49,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name=os.environ.get("EXTREME_AUDIT_EXE_NAME", "ExtremeAudit"),
+    name=os.environ.get("HOSTPULSE_EXE_NAME", "HostPulse"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

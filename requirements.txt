@@ -1,4 +1,4 @@
-# Extreme Audit v5 - Benchmark e report
+# HostPulse - Benchmark e report
 psutil>=5.9.0
 customtkinter>=5.2.0
 matplotlib>=3.5.0

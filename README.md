@@ -1,8 +1,4 @@
-# Extreme Audit v5
-
-Benchmark e audit hardware/OS per VM Windows (app server / DB server), con GUI e report HTML.
-
-## Run (dev)
+# HostPulse — hardware/OS benchmark e report
 
 ```bash
 cd bin
@@ -26,4 +22,4 @@ Dettagli deploy: [DEPLOY.md](DEPLOY.md).
 Da Windows: `.\build_exe.ps1`  
 Da Linux (Docker): `python build_exe_windows.py`
 
-Pacchetto atteso: `dist/windows/ExtremeAudit/` (`ExtremeAudit.exe` + `config/` + `results/`).
+Pacchetto atteso: `dist/windows/HostPulse/` (`HostPulse.exe` + `config/` + `results/`).

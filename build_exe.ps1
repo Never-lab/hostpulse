@@ -1,5 +1,5 @@
-# Build EXE Windows per Extreme Audit v5
-# Esecuzione (PowerShell, dalla cartella benchmark):
+# Build EXE Windows per HostPulse
+# Esecuzione (PowerShell, dalla cartella progetto):
 #   .\build_exe.ps1
 
 param(
@@ -15,22 +15,22 @@ Write-Host "==> Installazione dipendenze..."
 & $PythonExe -m pip install -r requirements.txt pyinstaller
 
 Write-Host "==> Build PyInstaller..."
-& $PythonExe -m PyInstaller --clean --noconfirm ".\ExtremeAudit.windows.spec"
+& $PythonExe -m PyInstaller --clean --noconfirm ".\HostPulse.windows.spec"
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller terminato con codice $LASTEXITCODE"
 }
 
 $DistDir = Join-Path $Root "dist"
-$ExePath = Join-Path $DistDir "windows\ExtremeAudit.exe"
+$ExePath = Join-Path $DistDir "windows\HostPulse.exe"
 if (-not (Test-Path $ExePath)) {
-    $ExePath = Join-Path $DistDir "ExtremeAudit.exe"
+    $ExePath = Join-Path $DistDir "HostPulse.exe"
 }
 if (-not (Test-Path $ExePath)) {
     throw "EXE non trovato: $ExePath"
 }
 
 # Pacchetto distribuzione: exe + config di esempio + cartelle runtime
-$ReleaseDir = Join-Path $DistDir "windows\ExtremeAudit"
+$ReleaseDir = Join-Path $DistDir "windows\HostPulse"
 if (Test-Path $ReleaseDir) {
     Remove-Item -Recurse -Force $ReleaseDir
 }
@@ -45,4 +45,4 @@ Write-Host "Build completata."
 Write-Host "  EXE:        $ExePath"
 Write-Host "  Pacchetto:  $ReleaseDir"
 Write-Host ""
-Write-Host "Copia la cartella dist\ExtremeAudit sul server Windows e avvia ExtremeAudit.exe."
+Write-Host "Copia la cartella dist\HostPulse sul server Windows e avvia HostPulse.exe."
