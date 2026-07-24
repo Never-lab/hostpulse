@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import threading
 import webbrowser
@@ -9,35 +8,16 @@ import webbrowser
 if getattr(sys, "frozen", False):
     sys.path.insert(0, getattr(sys, "_MEIPASS", ""))
 
-# Installazione automatica dipendenze mancanti (solo esecuzione da sorgente)
-_REQUIRED_PACKAGES = ["psutil", "customtkinter", "matplotlib", "seaborn", "pandas", "numpy"]
+from deps_check import require_dependencies
 
-
-def _ensure_dependencies() -> None:
-    """Installa con pip i pacchetti mancanti prima di importarli."""
-    if getattr(sys, "frozen", False):
-        return
-    for pkg in _REQUIRED_PACKAGES:
-        try:
-            __import__(pkg)
-        except ImportError:
-            try:
-                subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", pkg],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.STDOUT,
-                )
-            except subprocess.CalledProcessError:
-                pass  # ignora errori di rete/permessi; l'import successivo fallirà
-
-
-_ensure_dependencies()
+require_dependencies(frozen=getattr(sys, "frozen", False))
 
 import customtkinter as ctk
 from tkinter import messagebox
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_bin_dir
 from cancel import AuditCancelled
+from load_safety import needs_full_load_confirm
 from orchestrator import run_audit
 from pdf_export import PdfExportError, html_file_to_pdf
 
@@ -276,9 +256,6 @@ class AuditApp(ctk.CTk):
     def _on_start_click(self) -> None:
         if self._running:
             return
-        self.log_text.delete("1.0", "end")
-        self.progress.set(0)
-        self._cancel_event.clear()
 
         compare = self.compare_var.get()
         quick = self.quick_var.get()
@@ -286,8 +263,26 @@ class AuditApp(ctk.CTk):
         profile_display = self.profile_var.get()
         profile = self._profile_value_map.get(profile_display, "generic")
 
+        if needs_full_load_confirm(profile, production_safe):
+            ok = messagebox.askyesno(
+                "Carico pieno su server",
+                "Profilo Application/DB Server senza «Esecuzione in produzione».\n\n"
+                "Il benchmark a pieno carico può stressare CPU e disco sulla VM cliente.\n"
+                "Continuare comunque?\n\n"
+                "(Consigliato: attiva «Esecuzione in produzione (carico ridotto)».)",
+            )
+            if not ok:
+                return
+
+        self.log_text.delete("1.0", "end")
+        self.progress.set(0)
+        self._cancel_event.clear()
+
+        load_mode = "production-safe" if production_safe else ("quick" if quick else "full load")
         self._set_running_state(True)
-        self._append_log("Avvio analisi...")
+        self._append_log(
+            f"Avvio analisi... profilo={profile} modo={load_mode} compare={compare}"
+        )
 
         self._worker_thread = threading.Thread(
             target=self._run_audit_worker,

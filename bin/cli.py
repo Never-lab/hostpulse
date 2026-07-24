@@ -12,6 +12,7 @@ if str(_BIN) not in sys.path:
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_bin_dir  # noqa: E402
 from cancel import AuditCancelled  # noqa: E402
+from load_safety import CLI_FULL_LOAD_WARN, needs_full_load_confirm  # noqa: E402
 from orchestrator import run_audit  # noqa: E402
 from pdf_export import PdfExportError, html_file_to_pdf  # noqa: E402
 
@@ -39,6 +40,9 @@ def main(argv: list[str] | None = None) -> int:
     ensure_runtime_dirs()
     root = str(get_app_base_dir())
     bin_dir = str(get_bin_dir())
+
+    if needs_full_load_confirm(args.profile, args.production_safe):
+        print(CLI_FULL_LOAD_WARN, file=sys.stderr)
 
     def on_progress(_status: str, _step: int, log: str) -> None:
         print(log, flush=True)
