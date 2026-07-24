@@ -18,6 +18,9 @@ HostPulse is a **Windows-first** hardware/OS benchmark tool for customer VMs
 
 Distributed as a **PyInstaller EXE** on client machines (see `DEPLOY.md`).
 
+**Architecture map for agents:** start with [`docs/graphify/README.md`](docs/graphify/README.md)
+(god nodes, communities, `graph.json`). Prefer graph queries over blind repo walks.
+
 ## FABLE + POWERS (HostPulse)
 
 Ordine parent: **Memory → MCP → subagent → loop**. Setup: `/fable`.
@@ -35,7 +38,7 @@ Ordine parent: **Memory → MCP → subagent → loop**. Setup: `/fable`.
 |------|------|
 | Session memory | `claude-mem` (`search` → `timeline` → `get_observations`) |
 | GitHub | `gh` on `Never-lab/hostpulse` |
-| Code structure | `graphify` on `graphify-out/` |
+| Code structure | **Checked-in graph:** `docs/graphify/` (`GRAPH_REPORT.md`, `graph.json`); local cache `graphify-out/` |
 | GUI smoke (rare) | run GUI locally; Playwright only if it helps |
 
 ### Subagent
@@ -51,7 +54,7 @@ No subagent for one-line tweaks.
 | `bin/reporter_generator.py` | generate HTML from a saved `results/*.json` |
 | `bin/ui_benchmark.py` | GUI starts; start button enabled |
 | Packaging (`*.spec`, `build_exe*`) | build script completes; `dist/.../HostPulse.exe` exists |
-| Any code | `graphify update .` if graphify is available |
+| Any code | `graphify update .` if available; refresh `docs/graphify/` after large structural changes |
 
 Fail → show output → fix → re-run. You declare «done» only after human gate on checklist items.
 

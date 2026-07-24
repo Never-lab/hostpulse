@@ -1,35 +1,35 @@
-# HostPulse — hardware/OS benchmark e report
+# HostPulse — hardware/OS benchmark & commercial report
 
 [![CI](https://github.com/Never-lab/hostpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Never-lab/hostpulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Download latest](https://img.shields.io/github/v/release/Never-lab/hostpulse?label=Download%20latest)](https://github.com/Never-lab/hostpulse/releases/latest)
 
-HostPulse misura una VM/host e produce un **report HTML offline** (opzionale PDF) pensato per il cliente.
+HostPulse benchmarks a customer VM/host and produces an **offline HTML report** (optional PDF) you can send as a deliverable — plus a live GUI for on-site diagnosis.
 
 ## Quickstart
 
 ```bash
 pip install -r requirements.txt
 python bin/ui_benchmark.py
-# oppure headless:
+# headless:
 python bin/cli.py run --quick --production-safe --out report.html
 ```
 
-Su Windows puoi anche scaricare l’EXE da [Releases](https://github.com/Never-lab/hostpulse/releases/latest).
+On Windows you can also download the EXE from [Releases](https://github.com/Never-lab/hostpulse/releases/latest).
 
-## Cosa misura
+## What it measures
 
-- **CPU** — coerenza/jitter, hash crypto, compressione
-- **RAM** — uso, swap, stima bandwidth di copia (+ velocità MHz su Windows)
-- **Disco** — sequenziale, IOPS/latenza (path configurabile `DISK_TEST_PATH`)
-- **Rete** — ping latenza/jitter verso target configurabile
-- **Chaos** — impatto IOPS sotto carico CPU (saltato in production-safe)
+- **CPU** — consistency/jitter, crypto hash rate, compression
+- **RAM** — usage, swap, copy-bandwidth estimate (+ MHz speed on Windows)
+- **Disk** — sequential throughput, IOPS/latency (`DISK_TEST_PATH` configurable)
+- **Network** — ping latency/jitter to a configurable target
+- **Chaos** — IOPS impact under CPU load (skipped in production-safe mode)
 
-Profili: `generic` · `app_server` · `db_server`. Flag indipendenti: `--quick`, `--production-safe`.
+Profiles: `generic` · `app_server` · `db_server`. Independent flags: `--quick`, `--production-safe`.
 
-## Report (snippet)
+## Report
 
-Il report include health score, summary in linguaggio semplice, tabella metriche e raccomandazioni — apribile offline senza CDN.
+The report includes a health score, plain-language summary, metrics table, and recommendations — opens offline with no CDN.
 
 ```text
 HostPulse Report · hostname · profile=db_server · production-safe
@@ -37,36 +37,57 @@ Health Score  B  ·  VM detected · disk latency OK
 …
 ```
 
-GUI: avvia analisi → log live → **Apri report** / **Esporta PDF**.
+GUI flow: start audit → live log → **Open report** / **Export PDF**.
 
-## Dipendenze e dev
+## Dependencies & development
 
 `pip install -r requirements.txt`  
-(se manca un package all’avvio GUI, HostPulse esce con un messaggio chiaro — niente `pip install` automatico).
+(missing packages at GUI startup exit with a clear message — no silent `pip install`).
 
-Dev / CI: `pip install -r requirements.txt -r requirements-dev.txt` poi `pytest -q` e `ruff check bin tests`.
+Dev / CI: `pip install -r requirements.txt -r requirements-dev.txt`, then `pytest -q` and `ruff check bin tests`.
 
-Verifica locale (Windows): `.\scripts\verify_local.ps1`  
-Con build EXE: `.\scripts\verify_local.ps1 -BuildExe`
+Local verify (Windows): `.\scripts\verify_local.ps1`  
+With EXE build: `.\scripts\verify_local.ps1 -BuildExe`
 
 ## Config
 
-Copia `config/config.example.json` → `config/config.json` e adatta profilo / soglie.
+Copy `config/config.example.json` → `config/config.json` and tune profile / thresholds.
 
 - `PROFILE`: `generic` | `app_server` | `db_server`
-- `PRODUCTION_SAFE`: riduce carico su VM in produzione
+- `PRODUCTION_SAFE`: lower load on production VMs
 
-Dettagli: [DEPLOY.md](DEPLOY.md) · JSON: [docs/SCHEMA.md](docs/SCHEMA.md) · OS: [docs/PLATFORM.md](docs/PLATFORM.md) · [CHANGELOG](CHANGELOG.md).
+More: [DEPLOY.md](DEPLOY.md) · [docs/SCHEMA.md](docs/SCHEMA.md) · [docs/PLATFORM.md](docs/PLATFORM.md) · [CHANGELOG](CHANGELOG.md).
 
-## Build EXE Windows
+## Architecture map (for humans & AI)
 
-Da Windows: `.\build_exe.ps1`  
-Da Linux (Docker): `python build_exe_windows.py`
+A **graphify** knowledge graph of this repo lives in [`docs/graphify/`](docs/graphify/). Use it to navigate modules, ask “what calls what?”, and onboard coding agents in forks — see [`docs/graphify/README.md`](docs/graphify/README.md).
 
-Pacchetto atteso: `dist/windows/HostPulse/` (`HostPulse.exe` + `config/` + `results/`).
+## Build Windows EXE
 
-Release GitHub: tag `vX.Y.Z` → Actions carica `HostPulse-windows.zip` su [Releases](https://github.com/Never-lab/hostpulse/releases/latest).
+From Windows: `.\build_exe.ps1`  
+From Linux (Docker): `python build_exe_windows.py`
+
+Expected package: `dist/windows/HostPulse/` (`HostPulse.exe` + `config/` + `results/`).
+
+GitHub Release: tag `vX.Y.Z` → Actions uploads `HostPulse-windows.zip` to [Releases](https://github.com/Never-lab/hostpulse/releases/latest).
+
+## Contributors
+
+Thanks to everyone who ships HostPulse.
+
+| | |
+|---|---|
+| [@Never-lab](https://github.com/Never-lab) (JustKaneki) | Maintainer — product direction, engine, report, releases |
+
+Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+1. Read [docs/graphify/](docs/graphify/) so agents (and you) share the same map of the codebase
+2. Open an issue or PR against `main`
+3. Keep commits in English; chat/docs may be Italian or English
+4. Do **not** add `Co-authored-by: Cursor` (or similar) trailers
+
+Contributions of tests, Linux adapter gaps, report polish, and docs are especially welcome.
 
 ## License
 
-MIT — vedi [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
