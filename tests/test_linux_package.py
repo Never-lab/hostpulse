@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,9 +22,11 @@ def test_hostpulse_launcher_exists() -> None:
     assert "production-safe" in text
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Linux package build needs bash")
 def test_build_linux_produces_package() -> None:
     """Run build_linux.sh and assert layout (uses real dist/ under repo)."""
-    import subprocess
+    if shutil.which("bash") is None:
+        pytest.skip("bash not available")
 
     subprocess.run(["bash", "-n", str(ROOT / "scripts" / "hostpulse.sh")], check=True)
     subprocess.run(["bash", "-n", str(ROOT / "build_linux.sh")], check=True)
