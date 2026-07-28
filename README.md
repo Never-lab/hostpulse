@@ -17,7 +17,7 @@ python bin/cli.py run --quick --production-safe --out report.html
 
 Download ready-made packages from [Releases](https://github.com/Never-lab/hostpulse/releases/latest):
 
-- **Windows** — `HostPulse-windows.zip` (EXE + `config/` + `results/`)
+- **Windows** — `HostPulse-windows.zip` (cartella `HostPulse\` con EXE + `_internal\`; vedi [docs/WINDOWS_AV.md](docs/WINDOWS_AV.md) se Defender blocca)
 - **Linux** — `HostPulse-linux.zip` (`hostpulse.sh` launcher; first run creates a local `.venv` — needs Python 3.10+ and `python3-venv` on Debian/Ubuntu)
 
 ## What it measures
@@ -71,7 +71,9 @@ A **graphify** knowledge graph of this repo lives in [`docs/graphify/`](docs/gra
 
 **Windows EXE** — from Windows: `.\build_exe.ps1`  
 From Linux (Docker): `python build_exe_windows.py`  
-Output: `dist/windows/HostPulse/` (`HostPulse.exe` + `config/` + `results/`).
+Output: `dist/windows/HostPulse/` (`HostPulse.exe` + `_internal/` + `config/` + `results/`).
+
+**Antivirus / SmartScreen:** PyInstaller unsigned può essere bloccato — mitigazioni in build (onedir, no UPX) e guida IT in [docs/WINDOWS_AV.md](docs/WINDOWS_AV.md). Firma opzionale: `HOSTPULSE_SIGN_PFX` + `HOSTPULSE_SIGN_PASSWORD`.
 
 **Linux client** — from Linux / WSL: `./build_linux.sh`  
 Output: `dist/linux/HostPulse/` + `dist/HostPulse-linux.zip` (`hostpulse.sh` + `bin/` + `config/` + `results/`).

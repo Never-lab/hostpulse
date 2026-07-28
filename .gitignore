@@ -12,6 +12,7 @@ venv/
 dist/
 build/
 *.exe
+scripts/windows_version_info.txt
 
 # Runtime / local data
 results/

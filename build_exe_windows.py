@@ -12,9 +12,10 @@ from pathlib import Path
 def run_docker(root: Path, image: str) -> subprocess.CompletedProcess:
     build_cmd = (
         ". /root/.bashrc && cd /src && "
+        "python scripts/generate_version_info.py && "
         "python -m pip install --upgrade pip && "
         "pip install -r requirements.windows-build.txt && "
-        "pyinstaller --clean -y --dist ./dist/windows --workpath /tmp HostPulse.windows.spec && "
+        "pyinstaller --clean -y --distpath ./dist/windows --workpath /tmp HostPulse.windows.spec && "
         "chown -R --reference=. ./dist/windows 2>/dev/null || true"
     )
     cmd = [
@@ -43,6 +44,8 @@ def main() -> int:
     root = Path(__file__).resolve().parent
     os.chdir(root)
 
+    subprocess.run([sys.executable, "scripts/generate_version_info.py"], check=True)
+
     preferred = os.environ.get("PYI_WIN_IMAGE", "").strip()
     images = [img for img in [preferred or None, "cdrx/pyinstaller-windows:python3", "cdrx/pyinstaller-windows"] if img]
 
@@ -67,38 +70,26 @@ def main() -> int:
         print("Build Docker fallita.", flush=True)
         return 1
 
-    exe_candidates = [
-        root / "dist" / "windows" / "HostPulse.exe",
-        root / "dist" / "HostPulse.exe",
-    ]
-    exe_path = next((p for p in exe_candidates if p.exists()), None)
-    if exe_path is None:
-        print("EXE non trovato in dist/. Contenuto dist/:", flush=True)
+    release_dir = root / "dist" / "windows" / "HostPulse"
+    exe_path = release_dir / "HostPulse.exe"
+    if not exe_path.is_file():
+        print("EXE non trovato in dist/windows/HostPulse/. Contenuto dist/:", flush=True)
         dist = root / "dist"
         if dist.exists():
             for p in dist.rglob("*"):
                 print(f"  {p.relative_to(root)}", flush=True)
         return 1
 
-    release_dir = root / "dist" / "windows" / "HostPulse"
-    try:
-        release_dir.mkdir(parents=True, exist_ok=True)
-    except PermissionError:
-        release_dir = root / "dist" / "HostPulse"
-        release_dir.mkdir(parents=True, exist_ok=True)
-    dest_exe = release_dir / "HostPulse.exe"
-    shutil.copy2(exe_path, dest_exe)
-
     cfg_dir = release_dir / "config"
     cfg_dir.mkdir(exist_ok=True)
     example = root / "config" / "config.example.json"
     target_cfg = cfg_dir / "config.json"
-    if example.is_file() and not target_cfg.exists():
+    if example.is_file():
         shutil.copy2(example, target_cfg)
     (release_dir / "results").mkdir(exist_ok=True)
 
-    print(f"Build completata: {dest_exe}", flush=True)
-    print(f"Pacchetto distribuzione: {release_dir}", flush=True)
+    print(f"Build completata: {exe_path}", flush=True)
+    print(f"Pacchetto distribuzione: {release_dir} (onedir + _internal/)", flush=True)
     return 0
 
 

@@ -14,9 +14,9 @@ Tag `vX.Y.Z` su GitHub → [Releases](https://github.com/Never-lab/hostpulse/rel
 ## Windows (EXE)
 
 1. Scarica ed estrai `HostPulse-windows.zip` sulla VM Windows.
-2. Avvia `HostPulse.exe` (GUI) oppure usa la CLI se esposta nel bundle.
-3. `config/config.json` è già presente (copia dall’example); modifica profilo/soglie se serve.
-4. Report e JSON finiscono in `results/` accanto all’exe.
+2. **Distribuisci l’intera cartella** `HostPulse\` (`HostPulse.exe`, `_internal\`, `config\`, `results\`).
+3. Avvia `HostPulse.exe` (GUI).
+4. Se Defender/SmartScreen blocca: vedi [docs/WINDOWS_AV.md](docs/WINDOWS_AV.md) (SHA256, esclusione cartella, firma).
 
 Build locale: `.\build_exe.ps1` → `dist\windows\HostPulse\`.
 

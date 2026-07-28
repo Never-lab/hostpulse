@@ -1,10 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec per HostPulse (build Windows)
-# Esecuzione: pyinstaller --clean --noconfirm HostPulse.windows.spec
+# PyInstaller spec — Windows onedir (meno falsi positivi AV vs onefile+UPX).
+# Build: pyinstaller --clean --noconfirm --distpath dist/windows HostPulse.windows.spec
 
 import os
+from pathlib import Path
 
 block_cipher = None
+root = Path(SPECPATH)
+version_file = root / "scripts" / "windows_version_info.txt"
 
 extra_datas = [("config/config.example.json", "config")]
 try:
@@ -51,16 +54,24 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name=os.environ.get("HOSTPULSE_EXE_NAME", "HostPulse"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
+    upx=False,
     console=False,
+    version=str(version_file) if version_file.is_file() else None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name=os.environ.get("HOSTPULSE_EXE_NAME", "HostPulse"),
 )

@@ -42,3 +42,11 @@ def test_html_contains_executive_and_recommendations() -> None:
     assert "Executive Summary" in html
     assert "Raccomandazioni" in html
     assert "ci-fixture" in html
+
+
+def test_html_cpu_chart_has_labeled_axes() -> None:
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    html = ReportGenerator(data, reference=None).render()
+    assert "Utilizzo CPU durante stress test" in html
+    assert "Media" in html and "Picco" in html
+    assert '0%</text>' in html or "0%" in html

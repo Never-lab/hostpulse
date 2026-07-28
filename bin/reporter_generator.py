@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 
 import matplotlib
@@ -660,16 +661,114 @@ class ReportGenerator:
         color = STATUS_COLORS.get(status, "#94a3b8")
         bg = STATUS_BG.get(status, "#f1f5f9")
         return (
-            f'<span style="display:inline-block;padding:2px 8px;border-radius:4px;'
-            f'font-size:11px;font-weight:700;color:{color};background:{bg}">{text}</span>'
+            f'<span class="badge badge-{status}" style="color:{color};background:{bg}">{text}</span>'
         )
+
+    def _status_counts(self):
+        counts = {"ok": 0, "warn": 0, "crit": 0, "info": 0, "na": 0}
+        for a in self.analyses:
+            counts[a["status"]] = counts.get(a["status"], 0) + 1
+        return counts
+
+    def _verdict_headline(self):
+        grade = self.overall["grade"]
+        score = self.overall["score"]
+        crits = sum(1 for a in self.analyses if a["status"] == "crit")
+        warns = sum(1 for a in self.analyses if a["status"] == "warn")
+        if grade == "A":
+            return "Infrastruttura in ottime condizioni", "ok"
+        if grade == "B":
+            return "Infrastruttura solida, margini di ottimizzazione limitati", "ok"
+        if grade == "C":
+            return f"Prestazioni accettabili con {warns} area/e da monitorare", "warn"
+        if crits:
+            return f"Intervento consigliato: {crits} criticità rilevate", "crit"
+        return f"Prestazioni sotto soglia (score {score}/100)", "crit"
+
+    def _score_ring_svg(self):
+        score = float(self.overall["score"])
+        grade = self.overall["grade"]
+        status = self.overall["status"]
+        color = STATUS_COLORS.get(status, "#0284c7")
+        r = 52
+        c = 2 * 3.14159 * r
+        offset = c * (1.0 - max(0.0, min(100.0, score)) / 100.0)
+        return f"""<svg class="score-ring" viewBox="0 0 120 120" width="132" height="132" role="img" aria-label="Health score {score}">
+  <circle cx="60" cy="60" r="{r}" fill="none" stroke="#e2e8f0" stroke-width="9"/>
+  <circle cx="60" cy="60" r="{r}" fill="none" stroke="{color}" stroke-width="9"
+    stroke-dasharray="{c:.1f}" stroke-dashoffset="{offset:.1f}"
+    transform="rotate(-90 60 60)" stroke-linecap="round"/>
+  <text x="60" y="54" text-anchor="middle" font-size="30" font-weight="700" fill="{color}">{grade}</text>
+  <text x="60" y="74" text-anchor="middle" font-size="12" fill="#64748b">{score}/100</text>
+</svg>"""
+
+    def _analysis_map(self):
+        return {a["key"]: a for a in self.analyses}
+
+    def _kpi_cards_html(self, bench):
+        amap = self._analysis_map()
+        cards = [
+            ("disk_write", "Scrittura disco", bench.get("disk", {}).get("seq_write_mb", 0), "MB/s"),
+            ("disk_read", "Lettura disco", bench.get("disk", {}).get("seq_read_mb", 0), "MB/s"),
+            ("disk_iops", "IOPS random", bench.get("disk", {}).get("iops", 0), ""),
+            ("cpu_jitter", "CPU jitter", bench.get("cpu_consistency", {}).get("jitter_score", 0), "%"),
+            ("ram_bw", "Bandwidth RAM", bench.get("ram_perf", {}).get("copy_speed_gb", 0), "GB/s"),
+            ("net_latency", "Latenza rete", bench.get("net", {}).get("avg_ms", 0) or "n/d", "ms"),
+        ]
+        html = ""
+        for key, label, val, unit in cards:
+            st = amap.get(key, {}).get("status", "na")
+            suffix = f' <span class="kpi-unit">{unit}</span>' if unit and val != "n/d" else ""
+            html += f"""
+            <div class="kpi-card kpi-{st}">
+              <div class="kpi-label">{label}</div>
+              <div class="kpi-val">{val}{suffix}</div>
+            </div>"""
+        return html
+
+    def _grouped_metrics_html(self):
+        categories = [
+            ("Storage & I/O", ["disk_write", "disk_read", "disk_iops", "db_latency", "db_p99", "chaos", "disk_used"]),
+            ("CPU", ["cpu_jitter", "cpu_stability", "crypto", "compress", "cpu_queue"]),
+            ("Memoria", ["ram_bw", "ram_used", "swap_used"]),
+            ("Rete", ["net_latency", "net_jitter"]),
+        ]
+        amap = self._analysis_map()
+        html = ""
+        for title, keys in categories:
+            rows = [amap[k] for k in keys if k in amap]
+            if not rows:
+                continue
+            body = ""
+            for m in rows:
+                ref_cell = (
+                    f'<span class="ref-tag">Target {m["ref_display"]}</span>'
+                    if m.get("ref_display") is not None
+                    else '<span class="ref-tag muted">—</span>'
+                )
+                body += f"""
+                <tr class="row-{m['status']}">
+                  <td><span class="metric-name" title="{m['tooltip']}">{m['label']}</span></td>
+                  <td class="metric-val"><strong>{m['display']}</strong>{self._delta_html(m.get('delta_pct'))}</td>
+                  <td>{self._badge(m['status'], m['verdict'])}</td>
+                  <td class="ref-col">{ref_cell}</td>
+                </tr>"""
+            html += f"""
+            <div class="metric-group">
+              <h4>{title}</h4>
+              <table>
+                <thead><tr><th>Metrica</th><th>Valore</th><th>Valutazione</th><th>Baseline</th></tr></thead>
+                <tbody>{body}</tbody>
+              </table>
+            </div>"""
+        return html
 
     def _delta_html(self, delta):
         if delta is None:
             return ""
-        color = "#16a34a" if delta >= 0 else "#dc2626"
+        cls = "delta-up" if delta >= 0 else "delta-down"
         sign = "+" if delta > 0 else ""
-        return f'<div style="color:{color};font-size:11px;font-weight:bold;">{sign}{delta}% vs Ref</div>'
+        return f'<div class="delta {cls}">{sign}{delta}% vs ref</div>'
 
     def _run_flags_label(self, meta):
         flags = []
@@ -695,26 +794,50 @@ class ReportGenerator:
             "</ul>"
         )
 
-    def _cpu_series_svg(self, series, width=720, height=220):
+    def _downsample_series(self, times, usage, freq, max_pts=150):
+        n = len(times)
+        if n <= max_pts:
+            return times, usage, freq
+        idx = [int(round(i * (n - 1) / (max_pts - 1))) for i in range(max_pts)]
+        return [times[i] for i in idx], [usage[i] for i in idx], [freq[i] for i in idx]
+
+    def _nice_step(self, span, target_ticks=6):
+        if span <= 0:
+            return 1.0
+        raw = span / target_ticks
+        mag = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1
+        norm = raw / mag
+        if norm <= 1:
+            nice = 1
+        elif norm <= 2:
+            nice = 2
+        elif norm <= 5:
+            nice = 5
+        else:
+            nice = 10
+        return nice * mag
+
+    def _cpu_series_svg(self, series, width=820, height=300):
         times = list(series.get("time") or [])
-        usage = list(series.get("usage") or [])
-        freq = list(series.get("freq") or [])
+        usage = [float(u) for u in (series.get("usage") or [])]
+        freq = [float(f) for f in (series.get("freq") or [])]
         n = min(len(times), len(usage))
         if n < 2:
-            return "<p class='desc'>Nessuna serie CPU disponibile per questo run.</p>"
-        times = times[:n]
-        usage = usage[:n]
-        freq = freq[:n] if len(freq) >= n else [0] * n
-        pad_l, pad_r, pad_t, pad_b = 44, 48, 16, 28
+            return "<p class='muted'>Nessuna serie CPU disponibile per questo run.</p>"
+
+        times, usage, freq = self._downsample_series(times[:n], usage[:n], (freq + [0.0] * n)[:n])
+        n = len(times)
+        t0, t1 = float(times[0]), float(times[-1])
+        span = max(t1 - t0, 1e-6)
+
+        avg_u = sum(usage) / n
+        max_u = max(usage)
+        min_u = min(usage)
+        max_i = usage.index(max_u)
+
+        pad_l, pad_r, pad_t, pad_b = 54, 20, 52, 44
         plot_w = width - pad_l - pad_r
         plot_h = height - pad_t - pad_b
-        t0, t1 = float(times[0]), float(times[-1])
-        span = (t1 - t0) or 1.0
-        freq_vals = [float(f) for f in freq if f]
-        fmin = min(freq_vals) if freq_vals else 0.0
-        fmax = max(freq_vals) if freq_vals else 1.0
-        if fmax <= fmin:
-            fmax = fmin + 1.0
 
         def x_at(t):
             return pad_l + ((float(t) - t0) / span) * plot_w
@@ -722,20 +845,89 @@ class ReportGenerator:
         def y_usage(u):
             return pad_t + (1.0 - max(0.0, min(100.0, float(u))) / 100.0) * plot_h
 
-        def y_freq(f):
-            return pad_t + (1.0 - (float(f) - fmin) / (fmax - fmin)) * plot_h
-
         usage_pts = " ".join(f"{x_at(t):.1f},{y_usage(u):.1f}" for t, u in zip(times, usage))
-        freq_pts = " ".join(f"{x_at(t):.1f},{y_freq(f):.1f}" for t, f in zip(times, freq))
+        area_pts = f"{pad_l},{pad_t + plot_h} {usage_pts} {pad_l + plot_w},{pad_t + plot_h}"
+
+        grid_lines = ""
+        for pct in (0, 25, 50, 75, 100):
+            y = y_usage(pct)
+            grid_lines += f'<line x1="{pad_l}" y1="{y:.1f}" x2="{pad_l + plot_w}" y2="{y:.1f}" stroke="#e2e8f0" stroke-width="1"/>'
+            grid_lines += (
+                f'<text x="{pad_l - 8}" y="{y + 4:.1f}" text-anchor="end" font-size="10" fill="#94a3b8">{pct}%</text>'
+            )
+
+        x_step = self._nice_step(span, 5)
+        x_tick = t0
+        x_labels = ""
+        while x_tick <= t1 + 0.01:
+            x = x_at(x_tick)
+            x_labels += f'<line x1="{x:.1f}" y1="{pad_t + plot_h}" x2="{x:.1f}" y2="{pad_t + plot_h + 4}" stroke="#cbd5e1"/>'
+            x_labels += (
+                f'<text x="{x:.1f}" y="{pad_t + plot_h + 16}" text-anchor="middle" font-size="10" fill="#94a3b8">{x_tick:.0f}s</text>'
+            )
+            x_tick += x_step
+
+        peak_x, peak_y = x_at(times[max_i]), y_usage(max_u)
+        dots = ""
+        if n <= 24:
+            for t, u in zip(times, usage):
+                dots += f'<circle cx="{x_at(t):.1f}" cy="{y_usage(u):.1f}" r="3.5" fill="#0284c7" stroke="#fff" stroke-width="1.5"/>'
+
+        avg_y = y_usage(avg_u)
+        freq_panel = ""
+        freq_vals = [f for f in freq if f > 0]
+        if len(freq_vals) >= 2 and (max(freq_vals) - min(freq_vals)) >= 50:
+            fmin, fmax = min(freq_vals), max(freq_vals)
+            fspan = max(fmax - fmin, 1.0)
+            fh = 88
+            fy0 = height + 28
+            def y_freq(f):
+                return fy0 + (1.0 - (float(f) - fmin) / fspan) * (fh - 20)
+
+            freq_pts = " ".join(
+                f"{x_at(t):.1f},{y_freq(f):.1f}" for t, f in zip(times, freq) if f > 0
+            )
+            f_mid = int((fmin + fmax) / 2)
+            freq_panel = f"""
+<g transform="translate(0,{height + 8})">
+  <text x="{pad_l}" y="14" font-size="12" font-weight="600" fill="#475569">Frequenza CPU</text>
+  <text x="{pad_l + plot_w}" y="14" text-anchor="end" font-size="11" fill="#94a3b8">{fmin:.0f}–{fmax:.0f} MHz</text>
+  <rect x="{pad_l}" y="22" width="{plot_w}" height="{fh}" fill="#f8fafc" stroke="#e2e8f0" rx="6"/>
+  <text x="{pad_l - 8}" y="{22 + 14}" text-anchor="end" font-size="9" fill="#94a3b8">{fmax:.0f}</text>
+  <text x="{pad_l - 8}" y="{22 + fh - 6}" text-anchor="end" font-size="9" fill="#94a3b8">{fmin:.0f}</text>
+  <text x="{pad_l - 8}" y="{22 + fh/2 + 4}" text-anchor="end" font-size="9" fill="#94a3b8">{f_mid}</text>
+  <line x1="{pad_l}" y1="{22 + fh/2}" x2="{pad_l + plot_w}" y2="{22 + fh/2}" stroke="#e2e8f0" stroke-dasharray="4 4"/>
+  <polyline fill="none" stroke="#f59e0b" stroke-width="2" points="{freq_pts}"/>
+</g>"""
+            total_h = height + 8 + fh + 36
+        else:
+            total_h = height
+
         return f"""
-<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img" aria-label="CPU usage and frequency">
-  <rect x="{pad_l}" y="{pad_t}" width="{plot_w}" height="{plot_h}" fill="#f8fafc" stroke="#e2e8f0"/>
-  <polyline fill="none" stroke="#dc2626" stroke-width="2" points="{usage_pts}"/>
-  <polyline fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4" points="{freq_pts}"/>
-  <text x="{pad_l}" y="12" font-size="11" fill="#64748b">CPU % (rosso) · MHz (grigio tratteggiato)</text>
-  <text x="{pad_l}" y="{height - 8}" font-size="10" fill="#94a3b8">{times[0]}s → {times[-1]}s</text>
-  <text x="8" y="{pad_t + 10}" font-size="10" fill="#94a3b8">100</text>
-  <text x="8" y="{pad_t + plot_h}" font-size="10" fill="#94a3b8">0</text>
+<svg viewBox="0 0 {width} {total_h}" width="100%" height="{total_h}" role="img" aria-label="CPU load during stress test" class="cpu-chart">
+  <defs>
+    <linearGradient id="cpuFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0284c7" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0.04"/>
+    </linearGradient>
+  </defs>
+  <text x="{pad_l}" y="20" font-size="13" font-weight="700" fill="#0f172a">Utilizzo CPU durante stress test</text>
+  <text x="{pad_l + plot_w}" y="20" text-anchor="end" font-size="11" fill="#64748b">
+    Media <tspan font-weight="700" fill="#0284c7">{avg_u:.0f}%</tspan>
+    · Picco <tspan font-weight="700" fill="#dc2626">{max_u:.0f}%</tspan>
+    · Min <tspan font-weight="700">{min_u:.0f}%</tspan>
+  </text>
+  <rect x="{pad_l}" y="{pad_t}" width="{plot_w}" height="{plot_h}" fill="#fff" stroke="#e2e8f0" rx="8"/>
+  {grid_lines}
+  <line x1="{pad_l}" y1="{avg_y:.1f}" x2="{pad_l + plot_w}" y2="{avg_y:.1f}" stroke="#0284c7" stroke-width="1" stroke-dasharray="6 5" opacity="0.55"/>
+  <polygon fill="url(#cpuFill)" points="{area_pts}"/>
+  <polyline fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="{usage_pts}"/>
+  {dots}
+  <circle cx="{peak_x:.1f}" cy="{peak_y:.1f}" r="5" fill="#dc2626" stroke="#fff" stroke-width="2"/>
+  <text x="{peak_x:.1f}" y="{max(peak_y - 10, pad_t + 12):.1f}" text-anchor="middle" font-size="10" font-weight="700" fill="#dc2626">{max_u:.0f}%</text>
+  {x_labels}
+  <text x="{pad_l + plot_w / 2:.1f}" y="{pad_t + plot_h + 32}" text-anchor="middle" font-size="11" fill="#64748b">Tempo (secondi)</text>
+  {freq_panel}
 </svg>"""
 
     def render(self):
@@ -749,31 +941,20 @@ class ReportGenerator:
         profile = meta.get("profile", "generic")
 
         hostname = meta.get("hostname", "N/A")
-        ref_mode = "ACTIVE (vs baseline)" if self.ref else ("COMPARE (" + str(len(self.data_list)) + " host)" if len(self.data_list) > 1 else "SINGLE RUN")
+        ref_mode = "Baseline attiva" if self.ref else (
+            f"Comparativa {len(self.data_list)} host" if len(self.data_list) > 1 else "Singola esecuzione"
+        )
         run_flags = self._run_flags_label(meta)
         cpu_svg = self._cpu_series_svg(bench.get("cpu_series", {}))
+        headline, headline_st = self._verdict_headline()
+        counts = self._status_counts()
 
         summary_html = "".join(f"<li>{b}</li>" for b in self._executive_summary())
         recs_html = "".join(f"<li>{r}</li>" for r in self._recommendations())
         how_html = self._how_to_read(profile)
-
-        metric_rows = ""
-        for m in self.analyses:
-            ref_cell = (
-                f'<div style="color:#94a3b8;font-size:10px;">Target: {m["ref_display"]}</div>'
-                if m.get("ref_display") is not None
-                else ""
-            )
-            metric_rows += f"""
-            <tr>
-                <td><span title="{m['tooltip']}" style="border-bottom:1px dotted #94a3b8;cursor:help;">{m['label']}</span></td>
-                <td>
-                    <b>{m['display']}</b>
-                    {self._delta_html(m.get('delta_pct'))}
-                    <div style="margin-top:4px;">{self._badge(m['status'], m['verdict'])}</div>
-                </td>
-                <td style="text-align:right">{ref_cell}</td>
-            </tr>"""
+        kpi_html = self._kpi_cards_html(bench)
+        metrics_html = self._grouped_metrics_html()
+        score_ring = self._score_ring_svg()
 
         health_events = data.get("health", {}).get("events", [])
         health_html = ""
@@ -785,16 +966,16 @@ class ReportGenerator:
                 ev_rows += f"""
                 <tr>
                     <td>{self._badge(st, ev.get('level', 'INFO'))}</td>
-                    <td><code>{ev.get('code', '')}</code></td>
+                    <td><code class="ev-code">{ev.get('code', '')}</code></td>
                     <td>{ev.get('message', '')}</td>
-                    <td style="font-size:11px;color:#64748b">{ev.get('timestamp', '')}</td>
+                    <td class="muted">{ev.get('timestamp', '')}</td>
                 </tr>"""
             health_html = f"""
-            <div class="card alert-card">
+            <section class="card alert-card">
                 <h3>Eventi Health ({len(health_events)})</h3>
                 <table><thead><tr><th>Livello</th><th>Codice</th><th>Messaggio</th><th>Ora</th></tr></thead>
                 <tbody>{ev_rows}</tbody></table>
-            </div>"""
+            </section>"""
 
         ports = data.get("app_server", {}).get("ports", {})
         ports_html = ""
@@ -803,8 +984,8 @@ class ReportGenerator:
             for port, ok in ports.items():
                 pr += f"<tr><td>{port}</td><td>{self._badge('ok' if ok else 'crit', 'OPEN' if ok else 'CLOSED')}</td></tr>"
             ports_html = f"""
-            <div class="card"><h3>Porte applicative</h3>
-            <table><thead><tr><th>Porta</th><th>Stato</th></tr></thead><tbody>{pr}</tbody></table></div>"""
+            <section class="card side-card"><h3>Porte applicative</h3>
+            <table><thead><tr><th>Porta</th><th>Stato</th></tr></thead><tbody>{pr}</tbody></table></section>"""
 
         comp_rows = ""
         if len(self.data_list) > 1:
@@ -822,114 +1003,157 @@ class ReportGenerator:
         comparison_section = ""
         if comp_rows:
             comparison_section = f"""
-            <div class="card"><h3>Comparativa host ({len(self.data_list)})</h3>
+            <section class="card"><h3>Comparativa host ({len(self.data_list)})</h3>
             <table><thead><tr><th>Host</th><th>Write</th><th>Read</th><th>IOPS</th><th>CPU Stab.</th><th>Chaos</th></tr></thead>
-            <tbody>{comp_rows}</tbody></table></div>"""
+            <tbody>{comp_rows}</tbody></table></section>"""
 
         ram_speed = ram.get("speed_mhz") or 0
         ram_speed_txt = f"{ram_speed} MHz" if ram_speed else "n/d"
         schema_v = data.get("schema_version", "?")
         engine_v = data.get("engine_version", "?")
+        headline_color = STATUS_COLORS.get(headline_st, "#0284c7")
 
-        score_status = self.overall["status"]
         return f"""<!DOCTYPE html>
-<html><head>
+<html lang="it"><head>
 <meta charset="UTF-8">
-<title>Audit — {hostname}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HostPulse — {hostname}</title>
 <style>
-:root {{ --bg:#f8fafc; --card:#fff; --primary:#0284c7; --border:#e2e8f0; --muted:#64748b; }}
-body {{ font-family:Segoe UI,system-ui,-apple-system,sans-serif; background:var(--bg); color:#1e293b; margin:0; padding:32px; line-height:1.5; }}
-.container {{ max-width:1200px; margin:auto; }}
-.header {{ display:flex; justify-content:space-between; gap:20px; border-bottom:2px solid var(--border); padding-bottom:20px; margin-bottom:24px; }}
-h1 {{ margin:0 0 6px; font-size:26px; color:#0f172a; }}
-.sub {{ color:var(--muted); font-size:14px; }}
-.sys-box {{ background:#f1f5f9; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-size:12px; margin-top:12px; }}
-.score-box {{ text-align:center; min-width:120px; padding:12px 16px; border-radius:12px; border:1px solid var(--border); background:#fff; }}
-.score-val {{ font-family:Consolas,ui-monospace,monospace; font-size:34px; font-weight:700; color:{STATUS_COLORS.get(score_status,'#0284c7')}; }}
-.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:20px; }}
-.grid-2 {{ display:grid; grid-template-columns:1.4fr 1fr; gap:16px; margin-bottom:20px; }}
-@media (max-width:900px) {{ .grid-2 {{ grid-template-columns:1fr; }} .header {{ flex-direction:column; }} }}
-.card {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,.05); margin-bottom:16px; }}
-.alert-card {{ border-left:5px solid #dc2626; }}
-h3 {{ margin:0 0 12px; font-size:16px; color:#0f172a; border-bottom:1px solid var(--border); padding-bottom:8px; }}
-.label {{ font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; letter-spacing:.4px; }}
-.val {{ font-family:Consolas,ui-monospace,monospace; font-size:26px; font-weight:600; color:#0f172a; }}
-.desc {{ font-size:11px; color:var(--muted); margin-top:6px; }}
+:root {{
+  --bg:#f1f5f9; --card:#fff; --ink:#0f172a; --muted:#64748b; --border:#e2e8f0;
+  --brand:#0c4a6e; --accent:#0284c7; --ok:#16a34a; --warn:#d97706; --crit:#dc2626;
+}}
+* {{ box-sizing:border-box; }}
+body {{ font-family:Segoe UI,system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); margin:0; line-height:1.55; }}
+.container {{ max-width:1140px; margin:0 auto; padding:0 20px 40px; }}
+.hero {{ background:linear-gradient(135deg,#0c4a6e 0%,#0369a1 55%,#0ea5e9 100%); color:#fff; padding:28px 0 32px; margin-bottom:24px; }}
+.hero-inner {{ max-width:1140px; margin:0 auto; padding:0 20px; }}
+.brand {{ font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; opacity:.85; }}
+.hero h1 {{ margin:6px 0 4px; font-size:28px; font-weight:700; }}
+.hero-meta {{ font-size:14px; opacity:.92; }}
+.hero-meta b {{ font-weight:600; }}
+.pill {{ display:inline-block; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:2px 10px; font-size:12px; margin-right:6px; }}
+.verdict-row {{ display:grid; grid-template-columns:160px 1fr; gap:24px; align-items:center; margin:-20px 0 20px; }}
+@media (max-width:720px) {{ .verdict-row {{ grid-template-columns:1fr; }} }}
+.verdict-card {{ background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px 24px; box-shadow:0 8px 24px rgba(15,23,42,.08); display:flex; gap:20px; align-items:center; }}
+.verdict-text h2 {{ margin:0 0 6px; font-size:20px; color:{headline_color}; }}
+.verdict-text p {{ margin:0; color:var(--muted); font-size:14px; }}
+.status-bar {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }}
+.status-chip {{ font-size:12px; font-weight:600; padding:4px 10px; border-radius:8px; background:#f8fafc; border:1px solid var(--border); }}
+.status-chip.ok {{ color:var(--ok); border-color:#bbf7d0; background:#f0fdf4; }}
+.status-chip.warn {{ color:var(--warn); border-color:#fde68a; background:#fffbeb; }}
+.status-chip.crit {{ color:var(--crit); border-color:#fecaca; background:#fef2f2; }}
+.kpi-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }}
+.kpi-card {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; border-left:4px solid var(--border); }}
+.kpi-card.kpi-ok {{ border-left-color:var(--ok); }}
+.kpi-card.kpi-warn {{ border-left-color:var(--warn); }}
+.kpi-card.kpi-crit {{ border-left-color:var(--crit); }}
+.kpi-card.kpi-info {{ border-left-color:var(--accent); }}
+.kpi-label {{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }}
+.kpi-val {{ font-family:Consolas,ui-monospace,monospace; font-size:24px; font-weight:700; margin-top:4px; }}
+.kpi-unit {{ font-size:13px; font-weight:500; color:var(--muted); }}
+.layout {{ display:grid; grid-template-columns:1.55fr 1fr; gap:18px; align-items:start; }}
+@media (max-width:960px) {{ .layout {{ grid-template-columns:1fr; }} }}
+.card {{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px 22px; box-shadow:0 1px 2px rgba(15,23,42,.04); margin-bottom:18px; }}
+.side-card {{ margin-bottom:18px; }}
+.alert-card {{ border-left:4px solid var(--crit); }}
+h3 {{ margin:0 0 14px; font-size:17px; color:var(--ink); }}
+h4 {{ margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }}
+.sys-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px 18px; font-size:13px; }}
+.sys-grid div {{ padding:8px 0; border-bottom:1px solid #f1f5f9; }}
+.sys-grid b {{ color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; display:block; margin-bottom:2px; }}
+.metric-group {{ margin-bottom:18px; }}
+.metric-group:last-child {{ margin-bottom:0; }}
 table {{ width:100%; border-collapse:collapse; font-size:13px; }}
-th, td {{ padding:10px 8px; border-bottom:1px solid #f1f5f9; text-align:left; vertical-align:top; }}
-th {{ font-size:11px; text-transform:uppercase; color:var(--muted); }}
-.legend span {{ margin-right:10px; }}
+th, td {{ padding:10px 8px; border-bottom:1px solid #f1f5f9; text-align:left; vertical-align:middle; }}
+th {{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }}
+.metric-name {{ border-bottom:1px dotted #cbd5e1; cursor:help; }}
+.metric-val strong {{ font-family:Consolas,ui-monospace,monospace; }}
+.ref-col {{ text-align:right; }}
+.ref-tag {{ font-size:11px; color:var(--muted); }}
+.ref-tag.muted {{ opacity:.5; }}
+.row-crit {{ background:#fff5f5; }}
+.row-warn {{ background:#fffbeb; }}
+.badge {{ display:inline-block; padding:3px 9px; border-radius:6px; font-size:10px; font-weight:700; white-space:nowrap; }}
+.delta {{ font-size:11px; font-weight:600; margin-top:2px; }}
+.delta-up {{ color:var(--ok); }}
+.delta-down {{ color:var(--crit); }}
+.muted {{ color:var(--muted); font-size:12px; }}
+.ev-code {{ font-size:11px; background:#f1f5f9; padding:2px 6px; border-radius:4px; }}
+.legend {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }}
+.legend .badge {{ margin:0; }}
+.help-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }}
+@media (max-width:720px) {{ .help-grid {{ grid-template-columns:1fr; }} }}
 ul {{ margin:8px 0 0 18px; padding:0; }}
-li {{ margin-bottom:6px; }}
-.footer {{ color:var(--muted); font-size:11px; margin-top:24px; }}
-</style></head><body><div class="container">
-<div class="header">
-  <div>
-    <h1>HostPulse — Report Tecnico</h1>
-    <div class="sub"><b>{hostname}</b> · {meta.get('date','N/A')} · Admin: {'Sì' if meta.get('is_admin') else 'No'} · Modo: <b>{run_flags}</b></div>
-    <div class="sys-box">
-      <div><b>CPU:</b> {sys_info.get('cpu_model','N/A')} ({sys_info.get('cores','N/A')})</div>
-      <div><b>OS:</b> {sys_info.get('os','N/A')} · Uptime: {sys_info.get('uptime','N/A')}</div>
-      <div><b>RAM:</b> {ram.get('total_gb',0)} GB ({ram.get('percent_used',0)}% usata, {ram_speed_txt}) ·
-           <b>Disco:</b> {disk_hw.get('free_gb',0)}/{disk_hw.get('total_gb',0)} GB liberi ({disk_hw.get('percent_used',0)}% usato)</div>
-      <div><b>VM:</b> {'Sì' if virt.get('is_vm') else 'No'}{(' · ' + virt.get('hypervisor','')) if virt.get('is_vm') else ''} ·
-           <b>NUMA:</b> {sys_info.get('numa_nodes',1)} · <b>Power:</b> {sys_info.get('power_plan','N/A')}</div>
-      <div><b>Profilo:</b> {PROFILE_LABELS.get(profile, profile)} · <b>Ctx switches/s:</b> {virt.get('ctx_switches_sec',0)} · <b>CPU queue:</b> {virt.get('cpu_queue_length',0)}</div>
+li {{ margin-bottom:7px; }}
+.rec-list li {{ margin-bottom:10px; }}
+.footer {{ color:var(--muted); font-size:11px; text-align:center; padding-top:8px; }}
+.cpu-chart {{ display:block; border-radius:8px; }}
+@media print {{
+  .hero {{ background:#0c4a6e !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
+  .card, .kpi-card, .verdict-card {{ break-inside:avoid; box-shadow:none; }}
+}}
+</style></head><body>
+<header class="hero"><div class="hero-inner">
+  <div class="brand">HostPulse</div>
+  <h1>Report Audit Infrastruttura</h1>
+  <div class="hero-meta">
+    <b>{hostname}</b> · {meta.get('date','N/A')} ·
+    <span class="pill">{PROFILE_LABELS.get(profile, profile)}</span>
+    <span class="pill">{run_flags}</span>
+    <span class="pill">{'Admin' if meta.get('is_admin') else 'Utente standard'}</span>
+    <span class="pill">{ref_mode}</span>
+  </div>
+</div></header>
+
+<div class="container">
+<section class="verdict-row">
+  <div class="verdict-card">
+    {score_ring}
+    <div class="verdict-text">
+      <div class="kpi-label">Health Score</div>
+      <h2>{headline}</h2>
+      <p>Classe <b>{self.overall['grade']}</b> · {self.overall['score']}/100 punti</p>
+      <div class="status-bar">
+        <span class="status-chip ok">{counts.get('ok',0)} OK</span>
+        <span class="status-chip warn">{counts.get('warn',0)} WARN</span>
+        <span class="status-chip crit">{counts.get('crit',0)} CRIT</span>
+      </div>
     </div>
   </div>
-  <div>
-    <div class="sub" style="text-align:right;font-weight:600;">{ref_mode}</div>
-    <div class="score-box">
-      <div class="label">Health Score</div>
-      <div class="score-val">{self.overall['score']}</div>
-      <div class="label">Classe {self.overall['grade']}</div>
-    </div>
-  </div>
-</div>
+</section>
 
-<div class="card">
-  <h3>Come leggere questo report</h3>
-  {how_html}
-</div>
-
-<div class="card">
-  <h3>Legenda score</h3>
-  <div class="legend">
-    <span>{self._badge('ok', 'A ≥ 85')}</span>
-    <span>{self._badge('ok', 'B ≥ 70')}</span>
-    <span>{self._badge('warn', 'C ≥ 55')}</span>
-    <span>{self._badge('crit', 'D &lt; 55')}</span>
-  </div>
-  <p class="desc">OK = nella norma · WARN = da monitorare · CRIT = intervento consigliato · INFO = contesto</p>
-</div>
-
-<div class="card">
+<section class="card">
   <h3>Executive Summary</h3>
   <ul>{summary_html}</ul>
-</div>
+</section>
 
-<div class="grid">
-  <div class="card"><div class="label">Disk Write</div><div class="val" style="color:var(--primary)">{bench.get('disk',{}).get('seq_write_mb',0)} <small style="font-size:14px">MB/s</small></div></div>
-  <div class="card"><div class="label">Disk Read</div><div class="val">{bench.get('disk',{}).get('seq_read_mb',0)} <small style="font-size:14px">MB/s</small></div></div>
-  <div class="card"><div class="label">IOPS</div><div class="val">{bench.get('disk',{}).get('iops',0)}</div></div>
-  <div class="card"><div class="label">CPU Jitter</div><div class="val">{bench.get('cpu_consistency',{}).get('jitter_score',0)}%</div></div>
-  <div class="card"><div class="label">RAM BW</div><div class="val">{bench.get('ram_perf',{}).get('copy_speed_gb',0)} <small style="font-size:14px">GB/s</small></div></div>
-  <div class="card"><div class="label">Net Latency</div><div class="val">{bench.get('net',{}).get('avg_ms',0) or 'n/d'} <small style="font-size:14px">ms</small></div></div>
-</div>
+<section class="kpi-grid">{kpi_html}</section>
+
+<section class="card">
+  <h3>Inventario host</h3>
+  <div class="sys-grid">
+    <div><b>CPU</b>{sys_info.get('cpu_model','N/A')}<br><span class="muted">{sys_info.get('cores','N/A')}</span></div>
+    <div><b>Sistema operativo</b>{sys_info.get('os','N/A')}<br><span class="muted">Uptime {sys_info.get('uptime','N/A')}</span></div>
+    <div><b>Memoria</b>{ram.get('total_gb',0)} GB · {ram.get('percent_used',0)}% usata<br><span class="muted">{ram_speed_txt}</span></div>
+    <div><b>Disco</b>{disk_hw.get('free_gb',0)}/{disk_hw.get('total_gb',0)} GB liberi<br><span class="muted">{disk_hw.get('percent_used',0)}% usato</span></div>
+    <div><b>Virtualizzazione</b>{'VM' if virt.get('is_vm') else 'Bare metal'}{(' · ' + virt.get('hypervisor','')) if virt.get('is_vm') else ''}<br><span class="muted">NUMA {sys_info.get('numa_nodes',1)}</span></div>
+    <div><b>Energia / contesto</b>{sys_info.get('power_plan','N/A')}<br><span class="muted">Ctx/s {virt.get('ctx_switches_sec',0)} · Queue {virt.get('cpu_queue_length',0)}</span></div>
+  </div>
+</section>
 
 {health_html}
 {comparison_section}
 
-<div class="grid-2">
-  <div class="card">
+<div class="layout">
+  <section class="card">
     <h3>Analisi metriche</h3>
-    <table><thead><tr><th>Metrica</th><th>Valore / Valutazione</th><th style="text-align:right">Baseline</th></tr></thead>
-    <tbody>{metric_rows}</tbody></table>
-  </div>
+    {metrics_html}
+  </section>
   <div>
     {ports_html}
-    <div class="card">
-      <h3>Infrastructure snapshot</h3>
+    <section class="card side-card">
+      <h3>Dettaglio workload</h3>
       <table>
         <tr><td>Swap</td><td><b>{ram.get('swap_percent',0)}%</b></td></tr>
         <tr><td>Crypto hash/s</td><td><b>{bench.get('cpu_real',{}).get('crypto_hash_rate',0)}</b></td></tr>
@@ -938,18 +1162,37 @@ li {{ margin-bottom:6px; }}
         <tr><td>CPU avg task</td><td><b>{bench.get('cpu_consistency',{}).get('avg_task_ms',0)} ms</b></td></tr>
         <tr><td>Stability score</td><td><b>{bench.get('cpu_consistency',{}).get('stability_score','n/d')}</b></td></tr>
       </table>
-    </div>
-    <div class="card">
+    </section>
+    <section class="card side-card">
       <h3>Raccomandazioni</h3>
-      <ul>{recs_html}</ul>
-    </div>
+      <ul class="rec-list">{recs_html}</ul>
+    </section>
   </div>
 </div>
 
-<div class="card">
-  <h3>CPU Load vs Frequenza (stress test)</h3>
+<section class="card">
+  <h3>Stress test CPU</h3>
   {cpu_svg}
-</div>
+</section>
+
+<section class="card">
+  <div class="help-grid">
+    <div>
+      <h3>Come leggere questo report</h3>
+      {how_html}
+    </div>
+    <div>
+      <h3>Legenda score</h3>
+      <div class="legend">
+        <span>{self._badge('ok', 'A ≥ 85')}</span>
+        <span>{self._badge('ok', 'B ≥ 70')}</span>
+        <span>{self._badge('warn', 'C ≥ 55')}</span>
+        <span>{self._badge('crit', 'D &lt; 55')}</span>
+      </div>
+      <p class="muted">OK = nella norma · WARN = da monitorare · CRIT = intervento consigliato · INFO = contesto</p>
+    </div>
+  </div>
+</section>
 
 <div class="footer">HostPulse engine {engine_v} · schema v{schema_v} · report offline self-contained</div>
 </div></body></html>"""

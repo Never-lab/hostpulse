@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Report HTML: layout commerciale (hero, score ring, KPI con stato, metriche raggruppate)
+- Grafico CPU: assi etichettati, griglia 0–100%, media/picco/min, pannello MHz separato
+- Windows EXE: onedir (no UPX), version resource, SHA256.txt, firma Authenticode opzionale — [docs/WINDOWS_AV.md](docs/WINDOWS_AV.md)
+
 ## 0.1.2 — Linux venv bootstrap (PEP 668)
 
 - Linux `hostpulse.sh`: auto-bootstrap local `.venv` on first run (Debian/Ubuntu externally-managed-environment)
