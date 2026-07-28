@@ -28,10 +28,44 @@ jobs:
           if (-not (Test-Path "$pkg\HostPulse.exe")) { throw "HostPulse.exe missing in $pkg" }
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\HostPulse-windows.zip" -Force
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: HostPulse-windows
+          path: dist/HostPulse-windows.zip
+
+  linux-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build Linux package
+        run: |
+          chmod +x build_linux.sh scripts/hostpulse.sh
+          ./build_linux.sh
+          test -f dist/HostPulse-linux.zip
+          test -x dist/linux/HostPulse/hostpulse.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: HostPulse-linux
+          path: dist/HostPulse-linux.zip
+
+  release:
+    needs: [windows-exe, linux-package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: HostPulse-*
+          merge-multiple: true
+          path: dist
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: dist/HostPulse-windows.zip
+          files: |
+            dist/HostPulse-windows.zip
+            dist/HostPulse-linux.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

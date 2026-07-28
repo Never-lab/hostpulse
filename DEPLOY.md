@@ -1,18 +1,66 @@
 # Deployment – HostPulse
 
-**Contesto:** questo progetto viene distribuito e eseguito come **eseguibile (.exe) sul cliente** (non solo in ambiente di sviluppo). L’esecuzione tipica è su **VM clienti in produzione** (application server o DB server); usare il **profilo** (Generico / Application Server / DB Server) e l’opzione **Esecuzione in produzione (carico ridotto)** per adattare soglie e ridurre l’impatto.
+**Contesto:** HostPulse viene distribuito ai clienti come **pacchetto pronto** (Windows EXE o Linux zip + launcher), non solo come sorgente da sviluppo. L’esecuzione tipica è su **VM in produzione** (application server o DB server); usare il **profilo** e **Esecuzione in produzione (carico ridotto)** per adattare soglie e ridurre l’impatto.
 
-Da tenere presente in fase di build e packaging (es. PyInstaller, cx_Freeze):
+## Download (Releases)
 
-- **Entry point:** avviare l’applicazione dalla GUI, es. `python -m bin.ui_benchmark` oppure script che importa e lancia `ui_benchmark`.
-- **Percorsi:** l’engine usa `root_dir` (cartella progetto) per `config/` e `results/`; con l’exe verificare che le risorse (config.json, cartella results) siano raggiungibili dalla posizione in cui gira l’exe (es. stessa cartella dell’exe o percorso fissato in fase di build).
-- **Dipendenze:** includere tutte le librerie in `requirements.txt` nel bundle. Se l’applicazione viene avviata come script Python (non exe), all’avvio verifica la presenza delle librerie richieste e, in caso di mancanza, tenta l’installazione automatica con `pip install` (senza usare `requirements.txt`).
-- **Windows:** il codice usa PowerShell, WMI e powercfg; l’exe è pensato per ambiente Windows cliente.
+Tag `vX.Y.Z` su GitHub → [Releases](https://github.com/Never-lab/hostpulse/releases/latest):
 
-**Parametri di configurazione** (in `config/config.json` o `config.example.json`):
+| Asset | Piattaforma | Contenuto |
+|-------|-------------|-----------|
+| `HostPulse-windows.zip` | Windows | `HostPulse.exe`, `config/config.json`, `results/` |
+| `HostPulse-linux.zip` | Linux | `hostpulse.sh`, `bin/`, `config/`, `requirements.txt`, `results/` |
 
-- `PROFILE`: `"generic"` | `"app_server"` | `"db_server"` – contesto della macchina (override da UI).
-- `PRODUCTION_SAFE`: `true` – riduce carico (durata CPU, MB disco, iterazioni IOPS) per VM in produzione.
-- `WARN_DB_LATENCY_MS`: soglia latenza disco (ms) per avviso su profilo DB server (es. 10).
-- `DISK_TEST_PATH`: percorso directory per test disco (es. `"D:\\"` per volume dati DB); vuoto = temp di sistema.
-- `APP_PORT_CHECK`: porta o lista porte da verificare per profilo app server (es. `8080` o `[8080, 443]`); `null` = nessun check.
+## Windows (EXE)
+
+1. Scarica ed estrai `HostPulse-windows.zip` sulla VM Windows.
+2. Avvia `HostPulse.exe` (GUI) oppure usa la CLI se esposta nel bundle.
+3. `config/config.json` è già presente (copia dall’example); modifica profilo/soglie se serve.
+4. Report e JSON finiscono in `results/` accanto all’exe.
+
+Build locale: `.\build_exe.ps1` → `dist\windows\HostPulse\`.
+
+## Linux (zip + hostpulse.sh)
+
+**Prerequisiti:** Python 3.10+, `pip`, display opzionale (solo per GUI).
+
+1. Scarica ed estrai `HostPulse-linux.zip`.
+2. Installa dipendenze **una volta** (no auto-install silenzioso):
+
+   ```bash
+   cd HostPulse
+   pip install -r requirements.txt
+   ```
+
+3. Esegui:
+
+   ```bash
+   ./hostpulse.sh run --quick --production-safe --out results/report.html
+   ```
+
+   - `./hostpulse.sh` — GUI se `DISPLAY` è impostato, altrimenti audit headless rapido in production-safe.
+   - `./hostpulse.sh gui` — forza GUI.
+   - `./hostpulse.sh run …` — pass-through verso `bin/cli.py run` (profili, `--pdf`, ecc.).
+
+4. Metriche non disponibili su Linux → INFO `PLATFORM_*_NA` nel report (non crash). Dettaglio: [docs/PLATFORM.md](docs/PLATFORM.md).
+
+Build locale: `./build_linux.sh` → `dist/linux/HostPulse/` + `dist/HostPulse-linux.zip`.
+
+## Percorsi runtime
+
+L’engine usa la **cartella del pacchetto** come root (`config/`, `results/`). Con l’exe Windows la root è la cartella dell’exe; con Linux la root è dove vive `hostpulse.sh` (vedi `bin/app_paths.py`).
+
+## Dipendenze
+
+- **Windows EXE:** tutte le librerie di `requirements.txt` sono incluse nel bundle PyInstaller.
+- **Linux zip:** Python e pacchetti devono essere installati esplicitamente; all’avvio `deps_check` segnala cosa manca con messaggio chiaro.
+
+## Configurazione (`config/config.json`)
+
+- `PROFILE`: `"generic"` | `"app_server"` | `"db_server"`
+- `PRODUCTION_SAFE`: `true` — riduce carico su VM produzione
+- `WARN_DB_LATENCY_MS`: soglia latenza disco (ms) profilo DB (es. 10)
+- `DISK_TEST_PATH`: directory test disco (es. volume dati); vuoto = temp di sistema
+- `APP_PORT_CHECK`: porta/e per profilo app server; `null` = nessun check
+
+Vedi anche [docs/SCHEMA.md](docs/SCHEMA.md).
