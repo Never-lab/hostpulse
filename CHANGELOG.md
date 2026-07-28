@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 — Linux venv bootstrap (PEP 668)
 
-- Linux `hostpulse.sh`: auto-bootstrap local `.venv` on first run (PEP 668 / externally-managed-environment)
+- Linux `hostpulse.sh`: auto-bootstrap local `.venv` on first run (Debian/Ubuntu externally-managed-environment)
 
 ## 0.1.1 — Linux client package + dual-asset release
 
