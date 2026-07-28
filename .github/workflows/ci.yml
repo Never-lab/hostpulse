@@ -38,3 +38,11 @@ jobs:
 
       - name: Pytest
         run: python -m pytest -q
+
+      - name: Linux package smoke
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          chmod +x build_linux.sh scripts/hostpulse.sh
+          ./build_linux.sh
+          HOSTPULSE_PYTHON=python ./dist/linux/HostPulse/hostpulse.sh run --quick --production-safe --out /tmp/hostpulse-ci.html
+          test -f /tmp/hostpulse-ci.html

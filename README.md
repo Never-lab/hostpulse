@@ -15,7 +15,10 @@ python bin/ui_benchmark.py
 python bin/cli.py run --quick --production-safe --out report.html
 ```
 
-On Windows you can also download the EXE from [Releases](https://github.com/Never-lab/hostpulse/releases/latest).
+Download ready-made packages from [Releases](https://github.com/Never-lab/hostpulse/releases/latest):
+
+- **Windows** — `HostPulse-windows.zip` (EXE + `config/` + `results/`)
+- **Linux** — `HostPulse-linux.zip` (`hostpulse.sh` launcher + Python sources; requires Python 3.10+ and `pip install -r requirements.txt`)
 
 ## What it measures
 
@@ -47,7 +50,9 @@ GUI flow: start audit → live log → **Open report** / **Export PDF**.
 Dev / CI: `pip install -r requirements.txt -r requirements-dev.txt`, then `pytest -q` and `ruff check bin tests`.
 
 Local verify (Windows): `.\scripts\verify_local.ps1`  
-With EXE build: `.\scripts\verify_local.ps1 -BuildExe`
+With EXE build: `.\scripts\verify_local.ps1 -BuildExe`  
+Local verify (Linux / WSL): `./scripts/verify_local.sh`  
+With Linux package smoke: `BUILD_LINUX=1 ./scripts/verify_local.sh`
 
 ## Config
 
@@ -62,14 +67,26 @@ More: [DEPLOY.md](DEPLOY.md) · [docs/SCHEMA.md](docs/SCHEMA.md) · [docs/PLATFO
 
 A **graphify** knowledge graph of this repo lives in [`docs/graphify/`](docs/graphify/). Use it to navigate modules, ask “what calls what?”, and onboard coding agents in forks — see [`docs/graphify/README.md`](docs/graphify/README.md).
 
-## Build Windows EXE
+## Build release packages
 
-From Windows: `.\build_exe.ps1`  
-From Linux (Docker): `python build_exe_windows.py`
+**Windows EXE** — from Windows: `.\build_exe.ps1`  
+From Linux (Docker): `python build_exe_windows.py`  
+Output: `dist/windows/HostPulse/` (`HostPulse.exe` + `config/` + `results/`).
 
-Expected package: `dist/windows/HostPulse/` (`HostPulse.exe` + `config/` + `results/`).
+**Linux client** — from Linux / WSL: `./build_linux.sh`  
+Output: `dist/linux/HostPulse/` + `dist/HostPulse-linux.zip` (`hostpulse.sh` + `bin/` + `config/` + `results/`).
 
-GitHub Release: tag `vX.Y.Z` → Actions uploads `HostPulse-windows.zip` to [Releases](https://github.com/Never-lab/hostpulse/releases/latest).
+On the customer VM (Linux):
+
+```bash
+unzip HostPulse-linux.zip && cd HostPulse
+pip install -r requirements.txt   # once
+./hostpulse.sh run --quick --production-safe --out results/report.html
+# GUI when a display is available:
+./hostpulse.sh gui
+```
+
+GitHub Release: tag `vX.Y.Z` → Actions uploads `HostPulse-windows.zip` and `HostPulse-linux.zip` to [Releases](https://github.com/Never-lab/hostpulse/releases/latest).
 
 ## Contributors
 
