@@ -20,6 +20,7 @@ def test_hostpulse_launcher_exists() -> None:
     text = launcher.read_text(encoding="utf-8")
     assert "bin/cli.py" in text
     assert "production-safe" in text
+    assert ".venv" in text
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Linux package build needs bash")

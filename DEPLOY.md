@@ -22,21 +22,23 @@ Build locale: `.\build_exe.ps1` → `dist\windows\HostPulse\`.
 
 ## Linux (zip + hostpulse.sh)
 
-**Prerequisiti:** Python 3.10+, `pip`, display opzionale (solo per GUI).
+**Prerequisiti:** Python 3.10+ con modulo `venv` (`python3-venv` su Debian/Ubuntu), display opzionale (solo per GUI).
 
 1. Scarica ed estrai `HostPulse-linux.zip`.
-2. Installa dipendenze **una volta** (no auto-install silenzioso):
+2. Esegui (primo avvio crea `.venv/` e installa `requirements.txt` — compatibile PEP 668):
 
    ```bash
    cd HostPulse
-   pip install -r requirements.txt
-   ```
-
-3. Esegui:
-
-   ```bash
    ./hostpulse.sh run --quick --production-safe --out results/report.html
    ```
+
+   Su Debian/Ubuntu, se il venv non si crea:
+
+   ```bash
+   sudo apt install python3-venv python3-pip
+   ```
+
+3. Comandi:
 
    - `./hostpulse.sh` — GUI se `DISPLAY` è impostato, altrimenti audit headless rapido in production-safe.
    - `./hostpulse.sh gui` — forza GUI.
@@ -53,7 +55,7 @@ L’engine usa la **cartella del pacchetto** come root (`config/`, `results/`). 
 ## Dipendenze
 
 - **Windows EXE:** tutte le librerie di `requirements.txt` sono incluse nel bundle PyInstaller.
-- **Linux zip:** Python e pacchetti devono essere installati esplicitamente; all’avvio `deps_check` segnala cosa manca con messaggio chiaro.
+- **Linux zip:** primo avvio di `hostpulse.sh` crea `.venv/` locale e installa dipendenze; override con `HOSTPULSE_PYTHON`.
 
 ## Configurazione (`config/config.json`)
 

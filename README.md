@@ -18,7 +18,7 @@ python bin/cli.py run --quick --production-safe --out report.html
 Download ready-made packages from [Releases](https://github.com/Never-lab/hostpulse/releases/latest):
 
 - **Windows** — `HostPulse-windows.zip` (EXE + `config/` + `results/`)
-- **Linux** — `HostPulse-linux.zip` (`hostpulse.sh` launcher + Python sources; requires Python 3.10+ and `pip install -r requirements.txt`)
+- **Linux** — `HostPulse-linux.zip` (`hostpulse.sh` launcher; first run creates a local `.venv` — needs Python 3.10+ and `python3-venv` on Debian/Ubuntu)
 
 ## What it measures
 
@@ -80,8 +80,8 @@ On the customer VM (Linux):
 
 ```bash
 unzip HostPulse-linux.zip && cd HostPulse
-pip install -r requirements.txt   # once
 ./hostpulse.sh run --quick --production-safe --out results/report.html
+# first run bootstraps .venv/ automatically
 # GUI when a display is available:
 ./hostpulse.sh gui
 ```
