@@ -8,5 +8,7 @@
     "PRODUCTION_SAFE": false,
     "WARN_DB_LATENCY_MS": 10,
     "DISK_TEST_PATH": "",
-    "APP_PORT_CHECK": null
+    "APP_PORT_CHECK": null,
+    "UI_LAST_PRESET": "DB prod-safe",
+    "UI_PRESETS": []
 }
