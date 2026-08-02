@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 — Live shell UI
 
 - Live GUI: Setup → Live → Done shell, report-aligned dark theme, Never-lab presets (+ custom in config)
 - Report HTML: layout commerciale (hero, score ring, KPI con stato, metriche raggruppate)
