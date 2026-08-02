@@ -5,4 +5,4 @@ matplotlib>=3.10.9,<3.11
 seaborn>=0.13.2,<0.14
 pandas>=2.3.3,<2.4
 numpy>=2.2.6,<2.3
-pyinstaller>=5.0,<6
+pyinstaller>=6.21.0,<7
