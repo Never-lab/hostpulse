@@ -25,6 +25,12 @@ class AuditResultPaths:
     html_path: str
     export_dir: str
     cancelled: bool = False
+    overall_score: float = 0.0
+    grade: str = "N/A"
+    status: str = "na"
+    hostname: str = ""
+    profile: str = "generic"
+    mode: str = "full"
 
 
 def _load_baseline(root: str) -> Any:
@@ -134,4 +140,15 @@ def run_audit(
     Path(html_path).write_text(reporter.render(), encoding="utf-8")
 
     progress("Completato", PROGRESS_TOTAL, f"Report pronto: {html_path}")
-    return AuditResultPaths(json_path=json_path, html_path=html_path, export_dir=export_dir)
+    overall = getattr(reporter, "overall", {}) or {}
+    return AuditResultPaths(
+        json_path=json_path,
+        html_path=html_path,
+        export_dir=export_dir,
+        overall_score=float(overall.get("score", 0) or 0),
+        grade=str(overall.get("grade", "N/A")),
+        status=str(overall.get("status", "na")),
+        hostname=str(engine.data.get("meta", {}).get("hostname", "")),
+        profile=profile,
+        mode=mode,
+    )
