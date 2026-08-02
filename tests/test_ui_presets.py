@@ -12,6 +12,8 @@ sys.path.insert(0, str(BIN))
 
 from ui.presets import (  # noqa: E402
     BUILTINS,
+    ConfigCorruptError,
+    DEFAULT_LAST_PRESET,
     Preset,
     delete_custom_preset,
     get_last_preset_name,
@@ -78,3 +80,39 @@ def test_builtin_name_wins_over_custom(tmp_path: Path) -> None:
     p = get_preset("DB prod-safe", config_path=cfg)
     assert p is not None
     assert p.profile == "db_server" and p.builtin is True
+
+
+def test_corrupt_config_reads_degrade_to_builtins(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.json"
+    cfg.write_text("{not valid json", encoding="utf-8")
+
+    assert [p.name for p in list_presets(config_path=cfg)] == [p.name for p in BUILTINS]
+    assert get_preset("Nope", config_path=cfg) is None
+    assert get_last_preset_name(config_path=cfg) == DEFAULT_LAST_PRESET
+
+
+def test_corrupt_config_refuses_writes_and_keeps_file_untouched(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.json"
+    original = "{not valid json"
+    cfg.write_text(original, encoding="utf-8")
+
+    custom = Preset(
+        name="Nuovo preset",
+        profile="generic",
+        quick=False,
+        production_safe=False,
+        compare=False,
+        builtin=False,
+    )
+
+    with pytest.raises(ConfigCorruptError):
+        save_custom_preset(custom, config_path=cfg)
+    assert cfg.read_text(encoding="utf-8") == original
+
+    with pytest.raises(ConfigCorruptError):
+        delete_custom_preset("Nuovo preset", config_path=cfg)
+    assert cfg.read_text(encoding="utf-8") == original
+
+    with pytest.raises(ConfigCorruptError):
+        set_last_preset_name("Nuovo preset", config_path=cfg)
+    assert cfg.read_text(encoding="utf-8") == original

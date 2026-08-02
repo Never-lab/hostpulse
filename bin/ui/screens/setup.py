@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tkinter import messagebox
 from typing import Callable, Optional
 
 import customtkinter as ctk
@@ -141,8 +142,11 @@ class SetupScreen(ctk.CTkFrame):
         )
         self.delete_button.grid(row=0, column=2, sticky="w", padx=(10, 0))
 
+        toggle_row = ctk.CTkFrame(card, fg_color="transparent")
+        toggle_row.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 6))
+
         self.advanced_toggle = ctk.CTkButton(
-            card,
+            toggle_row,
             text="▸ Avanzate",
             command=self._toggle_advanced,
             corner_radius=8,
@@ -153,7 +157,15 @@ class SetupScreen(ctk.CTkFrame):
             hover_color=COLORS["border"],
             anchor="w",
         )
-        self.advanced_toggle.grid(row=3, column=0, sticky="w", padx=12, pady=(0, 6))
+        self.advanced_toggle.grid(row=0, column=0, sticky="w")
+
+        self.modified_label = ctk.CTkLabel(
+            toggle_row,
+            text="",
+            font=ctk.CTkFont("Segoe UI", size=10, weight="bold"),
+            text_color=COLORS["warn"],
+        )
+        self.modified_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
         self.advanced_frame = ctk.CTkFrame(card, fg_color="transparent")
         self.advanced_frame.grid_columnconfigure(0, weight=1)
@@ -215,6 +227,11 @@ class SetupScreen(ctk.CTkFrame):
             hover_color=COLORS["brand"],
         ).grid(row=4, column=0, sticky="w", padx=20, pady=(2, 16))
 
+        self._profile_var.trace_add("write", self._on_advanced_changed)
+        self._quick_var.trace_add("write", self._on_advanced_changed)
+        self._production_safe_var.trace_add("write", self._on_advanced_changed)
+        self._compare_var.trace_add("write", self._on_advanced_changed)
+
     # --- public API (Task 5 interface) ---
 
     def get_effective_preset(self) -> Preset:
@@ -238,9 +255,18 @@ class SetupScreen(ctk.CTkFrame):
         if wanted not in names and names:
             wanted = names[0]
 
-        if wanted in names:
-            self.preset_menu.set(wanted)
+        if wanted not in names:
+            return
+
+        self.preset_menu.set(wanted)
+        if wanted != self._selected_name:
+            # Selection actually changed (or first load): sync widgets to preset.
             self._apply_preset(wanted)
+        else:
+            # Same preset still selected: keep the technician's unsaved draft
+            # tweaks instead of wiping them (e.g. Setup shown again after
+            # cancel/new-run), just refresh the modified indicator.
+            self._update_modified_indicator()
 
     def set_status_message(self, text: str) -> None:
         self.status_label.configure(text=text)
@@ -263,10 +289,28 @@ class SetupScreen(ctk.CTkFrame):
         self._production_safe_var.set(preset.production_safe)
         self._compare_var.set(preset.compare)
         self.delete_button.configure(state="disabled" if preset.builtin else "normal")
+        self._update_modified_indicator()
+
+    def _on_advanced_changed(self, *_args: object) -> None:
+        self._update_modified_indicator()
+
+    def _update_modified_indicator(self) -> None:
+        preset = self._find_preset(self._selected_name)
+        modified = preset is not None and (
+            PROFILE_VALUES.get(self._profile_var.get(), "generic") != preset.profile
+            or self._quick_var.get() != preset.quick
+            or self._production_safe_var.get() != preset.production_safe
+            or self._compare_var.get() != preset.compare
+        )
+        self.modified_label.configure(text="● Modificato rispetto al preset" if modified else "")
 
     def _on_preset_selected(self, name: str) -> None:
         self._apply_preset(name)
-        set_last_preset_name(name)
+        try:
+            set_last_preset_name(name)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Preset", f"Impossibile salvare l'ultimo preset selezionato:\n{exc}")
+            self.set_status_message("Selezione preset non salvata (config non scrivibile).")
 
     def _toggle_advanced(self) -> None:
         self._advanced_visible = not self._advanced_visible
@@ -295,11 +339,12 @@ class SetupScreen(ctk.CTkFrame):
         preset.builtin = False
         try:
             save_custom_preset(preset)
-        except ValueError as exc:
-            self.set_status_message(str(exc))
+            set_last_preset_name(name)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Salvataggio preset", f"Impossibile salvare il preset:\n{exc}")
+            self.set_status_message("Salvataggio preset fallito: preset precedenti invariati.")
             return
 
-        set_last_preset_name(name)
         self._selected_name = name
         self.refresh_presets()
         if self._on_presets_changed:
@@ -310,7 +355,13 @@ class SetupScreen(ctk.CTkFrame):
         preset = self._find_preset(self._selected_name)
         if preset is None or preset.builtin:
             return
-        delete_custom_preset(preset.name)
+        try:
+            delete_custom_preset(preset.name)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Eliminazione preset", f"Impossibile eliminare il preset:\n{exc}")
+            self.set_status_message("Eliminazione preset fallita: preset precedenti invariati.")
+            return
+
         self._selected_name = ""
         self.refresh_presets()
         if self._on_presets_changed:

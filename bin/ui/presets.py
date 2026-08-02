@@ -11,6 +11,10 @@ from app_paths import get_config_path
 DEFAULT_LAST_PRESET = "DB prod-safe"
 
 
+class ConfigCorruptError(ValueError):
+    """config.json exists but is not valid JSON — never safe to overwrite."""
+
+
 @dataclass
 class Preset:
     name: str
@@ -34,18 +38,39 @@ def _resolve_config_path(config_path: Path | None) -> Path:
     return config_path if config_path is not None else get_config_path()
 
 
-def _read_config(path: Path) -> dict:
+def _read_config_strict(path: Path) -> dict:
+    """Read config.json, raising ConfigCorruptError on invalid JSON.
+
+    Missing file / unreadable file -> {} (nothing to clobber).
+    Present but unparseable file -> ConfigCorruptError (must not be overwritten).
+    """
     if not path.is_file():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        text = path.read_text(encoding="utf-8")
+    except OSError:
         return {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ConfigCorruptError(
+            f"File di configurazione non valido (JSON non leggibile): {path}"
+        ) from exc
     return data if isinstance(data, dict) else {}
 
 
+def _read_config(path: Path) -> dict:
+    """Safe read for lookups (list/get presets): corrupt config degrades to {}."""
+    try:
+        return _read_config_strict(path)
+    except ConfigCorruptError:
+        return {}
+
+
 def _write_config(path: Path, updates: dict) -> None:
-    data = _read_config(path)
+    # Use the strict reader so a corrupt config.json raises instead of being
+    # silently treated as empty and clobbered with only the new keys.
+    data = _read_config_strict(path)
     if "UI_PRESETS" in updates:
         data["UI_PRESETS"] = updates["UI_PRESETS"]
     if "UI_LAST_PRESET" in updates:
