@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Live GUI: Setup → Live → Done shell, report-aligned dark theme, Never-lab presets (+ custom in config)
 - Report HTML: layout commerciale (hero, score ring, KPI con stato, metriche raggruppate)
 - Grafico CPU: assi etichettati, griglia 0–100%, media/picco/min, pannello MHz separato
 - Windows EXE: onedir (no UPX), version resource, SHA256.txt, firma Authenticode opzionale — [docs/WINDOWS_AV.md](docs/WINDOWS_AV.md)
