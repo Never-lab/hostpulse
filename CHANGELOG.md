@@ -6,6 +6,7 @@
 - Report HTML: layout commerciale (hero, score ring, KPI con stato, metriche raggruppate)
 - Grafico CPU: assi etichettati, griglia 0–100%, media/picco/min, pannello MHz separato
 - Windows EXE: onedir (no UPX), version resource, SHA256.txt, firma Authenticode opzionale — [docs/WINDOWS_AV.md](docs/WINDOWS_AV.md)
+- Fix Release workflow: avoid secrets in `if:` (restores tag-triggered builds)
 
 ## 0.1.2 — Linux venv bootstrap (PEP 668)
 

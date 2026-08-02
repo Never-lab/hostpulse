@@ -21,12 +21,15 @@ jobs:
           cache: pip
 
       - name: Prepare code signing
-        if: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 != '' }}
         shell: pwsh
         env:
           WINDOWS_SIGN_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 }}
           WINDOWS_SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
         run: |
+          if (-not $env:WINDOWS_SIGN_PFX_BASE64) {
+            Write-Host "No WINDOWS_SIGN_PFX_BASE64 secret; skipping code signing."
+            exit 0
+          }
           $pfx = Join-Path $env:RUNNER_TEMP "hostpulse.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_SIGN_PFX_BASE64))
           "HOSTPULSE_SIGN_PFX=$pfx" >> $env:GITHUB_ENV
