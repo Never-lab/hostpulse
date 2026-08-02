@@ -1,5 +1,5 @@
 # HostPulse - Benchmark e report
-psutil>=5.9.0
+psutil>=7.2.2
 customtkinter>=6.0.0
 matplotlib>=3.10.9
 seaborn>=0.13.2
