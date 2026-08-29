@@ -127,3 +127,10 @@ graphify path "HostPulseEngine" "ReportGenerator"
 
 `docs/apprendimenti/YYYY-MM-DD-<tema>.md` — Italian, know-how not changelog.
 Must stay gitignored (see `.gitignore`).
+
+## Shared agent block (Never-lab)
+
+- Chat: Italian. Code/PR/issue text: English (Floatdesk player UI: Italian).
+- Before posting PR bodies or issue comments: skill **`no-ai-slop`**.
+- Never `Co-authored-by: Cursor`.
+- Prefer `ponytail` + Karpathy; Superpowers only when the slice is new/ambiguous. No default `docs/superpowers/specs|plans` MD — decisions in chat/claude-mem (liquidazi style).
