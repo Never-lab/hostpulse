@@ -44,5 +44,7 @@ jobs:
         run: |
           chmod +x build_linux.sh scripts/hostpulse.sh
           ./build_linux.sh
+          test -f dist/linux/HostPulse/bin/ui/app.py
           HOSTPULSE_PYTHON=python ./dist/linux/HostPulse/hostpulse.sh run --quick --production-safe --out /tmp/hostpulse-ci.html
           test -f /tmp/hostpulse-ci.html
+          grep -q 'class="nd"\|Health Score' /tmp/hostpulse-ci.html

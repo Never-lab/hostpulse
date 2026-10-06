@@ -36,6 +36,12 @@ def test_build_linux_produces_package() -> None:
     pkg = ROOT / "dist" / "linux" / "HostPulse"
     assert (pkg / "hostpulse.sh").is_file()
     assert (pkg / "bin" / "cli.py").is_file()
+    assert (pkg / "bin" / "ui" / "app.py").is_file()
     assert (pkg / "config" / "config.json").is_file()
     assert (pkg / "requirements.txt").is_file()
     assert (ROOT / "dist" / "HostPulse-linux.zip").is_file()
+
+
+def test_build_linux_script_copies_ui() -> None:
+    text = (ROOT / "build_linux.sh").read_text(encoding="utf-8")
+    assert "bin/ui" in text

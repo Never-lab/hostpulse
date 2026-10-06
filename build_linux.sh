@@ -10,6 +10,9 @@ rm -rf "$PKG"
 mkdir -p "$PKG/bin" "$PKG/config" "$PKG/results"
 
 cp "$ROOT"/bin/*.py "$PKG/bin/"
+if [[ -d "$ROOT/bin/ui" ]]; then
+  cp -a "$ROOT/bin/ui" "$PKG/bin/"
+fi
 cp "$ROOT/config/config.example.json" "$PKG/config/"
 cp "$ROOT/config/config.example.json" "$PKG/config/config.json"
 cp "$ROOT/config/baseline.json" "$PKG/config/"

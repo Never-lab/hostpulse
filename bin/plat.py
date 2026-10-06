@@ -116,9 +116,11 @@ class WindowsAdapter:
     @staticmethod
     def _run_ps(cmd: str) -> str | None:
         try:
-            full = f'powershell -NoProfile -Command "{cmd}"'
             return subprocess.check_output(
-                full, shell=True, text=True, stderr=subprocess.STDOUT, timeout=5
+                ["powershell", "-NoProfile", "-Command", cmd],
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=5,
             ).strip()
         except Exception:
             return None
@@ -133,8 +135,7 @@ class WindowsAdapter:
             if ps_out and ps_out.strip().isdigit():
                 return int(ps_out.strip())
             wmic = subprocess.run(
-                "wmic memorychip get speed",
-                shell=True,
+                ["wmic", "memorychip", "get", "speed"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -183,13 +184,15 @@ class LinuxAdapter:
                 )
             )
 
-        snap.ram_speed_mhz = None
-        snap.gaps.append(
-            (
-                "PLATFORM_RAM_SPEED_NA",
-                "Velocità RAM (MHz) non esposta in modo affidabile su Linux (metrica N/A).",
+        snap.ram_speed_mhz = self._ram_speed_mhz()
+        if snap.ram_speed_mhz is None:
+            snap.gaps.append(
+                (
+                    "PLATFORM_RAM_SPEED_NA",
+                    "Velocità RAM (MHz) non esposta in modo affidabile su Linux "
+                    "(serve dmidecode da root, o non disponibile su questa VM).",
+                )
             )
-        )
 
         is_vm, hyper = self._detect_vm()
         snap.is_vm = is_vm
@@ -248,6 +251,38 @@ class LinuxAdapter:
         if b is None or b < a:
             return None
         return (b - a) / 0.2
+
+    @staticmethod
+    def _ram_speed_mhz() -> int | None:
+        """Best-effort via dmidecode (usually needs root). Prefer configured speed."""
+        try:
+            out = subprocess.check_output(
+                ["dmidecode", "-t", "memory"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=4,
+            )
+        except Exception:
+            return None
+
+        # Prefer operating/configured clock; fall back to JEDEC rated Speed.
+        configured: list[int] = []
+        rated: list[int] = []
+        speed_re = re.compile(r"(\d+)\s*(?:mt/s|mhz)\b", re.I)
+        for line in out.splitlines():
+            low = line.strip().lower()
+            m = speed_re.search(low)
+            if not m:
+                continue
+            val = int(m.group(1))
+            if not (200 <= val <= 20000):
+                continue
+            if "configured" in low and "speed" in low:
+                configured.append(val)
+            elif low.startswith("speed:"):
+                rated.append(val)
+        pool = configured or rated
+        return max(pool) if pool else None
 
     @staticmethod
     def _detect_vm() -> tuple[bool, str | None]:

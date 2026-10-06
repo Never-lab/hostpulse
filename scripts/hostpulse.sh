@@ -24,7 +24,7 @@ resolve_python() {
 
   if [[ -n "${HOSTPULSE_PYTHON:-}" ]]; then
     PY="$HOSTPULSE_PYTHON"
-    if ! command -v "$PY" >/dev/null 2>&1; then
+    if [[ ! -x "$PY" ]] && ! command -v "$PY" >/dev/null 2>&1; then
       echo "HostPulse: HOSTPULSE_PYTHON not found: $PY" >&2
       exit 127
     fi

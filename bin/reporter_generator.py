@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import math
 import os
@@ -25,6 +26,14 @@ PROFILE_LABELS = {
 
 STATUS_COLORS = {"ok": "#16a34a", "warn": "#d97706", "crit": "#dc2626", "info": "#0284c7", "na": "#94a3b8"}
 STATUS_BG = {"ok": "#dcfce7", "warn": "#fef3c7", "crit": "#fee2e2", "info": "#e0f2fe", "na": "#f1f5f9"}
+
+# Health INFO codes from plat.py → inventory field key for n/d + hover
+_PLATFORM_GAP_FIELDS = {
+    "PLATFORM_POWER_PLAN_NA": "power_plan",
+    "PLATFORM_CPU_QUEUE_NA": "cpu_queue",
+    "PLATFORM_CTX_SWITCHES_NA": "ctx_switches",
+    "PLATFORM_RAM_SPEED_NA": "ram_speed",
+}
 
 
 class ReportGenerator:
@@ -437,27 +446,34 @@ class ReportGenerator:
         warns = [a for a in self.analyses if a["status"] == "warn"]
         oks = [a for a in self.analyses if a["status"] == "ok"]
 
+        def bold(text) -> str:
+            return f"<b>{html.escape(str(text))}</b>"
+
+        score_txt = f"{self.overall['score']}/100"
         bullets.append(
-            f"Punteggio complessivo <b>{self.overall['score']}/100</b> (classe <b>{self.overall['grade']}</b>) "
-            f"su profilo <b>{PROFILE_LABELS.get(profile, profile)}</b>."
+            f"Punteggio complessivo {bold(score_txt)} "
+            f"(classe {bold(self.overall['grade'])}) "
+            f"su profilo {bold(PROFILE_LABELS.get(profile, profile))}."
         )
         if oks:
             top = sorted(oks, key=lambda x: x.get("value", 0), reverse=True)[:2]
             bullets.append(
                 "Punti di forza: "
-                + ", ".join(f"<b>{m['label']}</b> ({m['display']})" for m in top[:2])
+                + ", ".join(f"{bold(m['label'])} ({html.escape(str(m['display']))})" for m in top[:2])
                 + "."
             )
         if crits:
             bullets.append(
                 "<span style='color:#dc2626'>Criticità:</span> "
-                + ", ".join(f"<b>{m['label']}</b> — {m['verdict']}" for m in crits[:3])
+                + ", ".join(
+                    f"{bold(m['label'])} — {html.escape(str(m['verdict']))}" for m in crits[:3]
+                )
                 + "."
             )
         elif warns:
             bullets.append(
                 "<span style='color:#d97706'>Attenzione:</span> "
-                + ", ".join(f"<b>{m['label']}</b>" for m in warns[:3])
+                + ", ".join(bold(m["label"]) for m in warns[:3])
                 + " da monitorare."
             )
         else:
@@ -465,19 +481,23 @@ class ReportGenerator:
 
         events = data.get("health", {}).get("events", [])
         if events:
-            bullets.append(f"Rilevati <b>{len(events)}</b> eventi health (vedi sezione dedicata).")
+            bullets.append(f"Rilevati {bold(len(events))} eventi health (vedi sezione dedicata).")
 
         if profile == "db_server":
             lat = self._get_val(data, ["benchmark", "disk", "db_sim_latency_ms"], default=0)
             if lat and lat > 5:
                 bullets.append(
-                    f"Per un DB server la latenza storage simulata ({lat} ms) andrebbe idealmente sotto 5 ms."
+                    f"Per un DB server la latenza storage simulata "
+                    f"({html.escape(str(lat))} ms) andrebbe idealmente sotto 5 ms."
                 )
         elif profile == "app_server":
             ports = data.get("app_server", {}).get("ports", {})
-            closed = [p for p, ok in ports.items() if not ok]
+            closed = [str(p) for p, ok in ports.items() if not ok]
             if closed:
-                bullets.append(f"Porte applicative non raggiungibili: <b>{', '.join(closed)}</b>.")
+                bullets.append(
+                    "Porte applicative non raggiungibili: "
+                    f"{bold(', '.join(html.escape(p) for p in closed))}."
+                )
 
         return bullets
 
@@ -658,11 +678,37 @@ class ReportGenerator:
         plt.close()
 
     def _badge(self, status, text):
-        color = STATUS_COLORS.get(status, "#94a3b8")
-        bg = STATUS_BG.get(status, "#f1f5f9")
-        return (
-            f'<span class="badge badge-{status}" style="color:{color};background:{bg}">{text}</span>'
-        )
+        allowed = {"ok", "warn", "crit", "info", "na"}
+        st = status if status in allowed else "na"
+        color = STATUS_COLORS.get(st, "#94a3b8")
+        bg = STATUS_BG.get(st, "#f1f5f9")
+        label = html.escape(str(text))
+        return f'<span class="badge badge-{st}" style="color:{color};background:{bg}">{label}</span>'
+
+    @staticmethod
+    def _nd(reason: str) -> str:
+        """Unavailable value: n/d with native browser tooltip on hover."""
+        tip = html.escape(reason or "Metrica non disponibile su questo host.", quote=True)
+        return f'<span class="nd" title="{tip}">n/d</span>'
+
+    def _platform_gap_reasons(self, data) -> dict[str, str]:
+        reasons: dict[str, str] = {}
+        for ev in data.get("health", {}).get("events", []) or []:
+            code = ev.get("code") or ""
+            field = _PLATFORM_GAP_FIELDS.get(code)
+            if field and field not in reasons:
+                reasons[field] = ev.get("message") or code
+        return reasons
+
+    def _value_or_nd(self, value, reason: str | None, *, empty_tokens=("N/A", "n/a", "n/d", "")):
+        if reason:
+            return self._nd(reason)
+        if value is None:
+            return self._nd("Valore non disponibile.")
+        text = str(value).strip()
+        if text in empty_tokens:
+            return self._nd("Valore non disponibile su questo host.")
+        return html.escape(text)
 
     def _status_counts(self):
         counts = {"ok": 0, "warn": 0, "crit": 0, "info": 0, "na": 0}
@@ -715,16 +761,16 @@ class ReportGenerator:
             ("ram_bw", "Bandwidth RAM", bench.get("ram_perf", {}).get("copy_speed_gb", 0), "GB/s"),
             ("net_latency", "Latenza rete", bench.get("net", {}).get("avg_ms", 0) or "n/d", "ms"),
         ]
-        html = ""
+        out = ""
         for key, label, val, unit in cards:
             st = amap.get(key, {}).get("status", "na")
             suffix = f' <span class="kpi-unit">{unit}</span>' if unit and val != "n/d" else ""
-            html += f"""
+            out += f"""
             <div class="kpi-card kpi-{st}">
-              <div class="kpi-label">{label}</div>
-              <div class="kpi-val">{val}{suffix}</div>
+              <div class="kpi-label">{html.escape(label)}</div>
+              <div class="kpi-val">{html.escape(str(val))}{suffix}</div>
             </div>"""
-        return html
+        return out
 
     def _grouped_metrics_html(self):
         categories = [
@@ -734,34 +780,37 @@ class ReportGenerator:
             ("Rete", ["net_latency", "net_jitter"]),
         ]
         amap = self._analysis_map()
-        html = ""
+        out = ""
         for title, keys in categories:
             rows = [amap[k] for k in keys if k in amap]
             if not rows:
                 continue
             body = ""
             for m in rows:
+                tip = html.escape(str(m.get("tooltip") or ""), quote=True)
+                label = html.escape(str(m["label"]))
+                display = html.escape(str(m["display"]))
                 ref_cell = (
-                    f'<span class="ref-tag">Target {m["ref_display"]}</span>'
+                    f'<span class="ref-tag">Target {html.escape(str(m["ref_display"]))}</span>'
                     if m.get("ref_display") is not None
                     else '<span class="ref-tag muted">—</span>'
                 )
                 body += f"""
                 <tr class="row-{m['status']}">
-                  <td><span class="metric-name" title="{m['tooltip']}">{m['label']}</span></td>
-                  <td class="metric-val"><strong>{m['display']}</strong>{self._delta_html(m.get('delta_pct'))}</td>
+                  <td><span class="metric-name" title="{tip}">{label}</span></td>
+                  <td class="metric-val"><strong>{display}</strong>{self._delta_html(m.get('delta_pct'))}</td>
                   <td>{self._badge(m['status'], m['verdict'])}</td>
                   <td class="ref-col">{ref_cell}</td>
                 </tr>"""
-            html += f"""
+            out += f"""
             <div class="metric-group">
-              <h4>{title}</h4>
+              <h4>{html.escape(title)}</h4>
               <table>
                 <thead><tr><th>Metrica</th><th>Valore</th><th>Valutazione</th><th>Baseline</th></tr></thead>
                 <tbody>{body}</tbody>
               </table>
             </div>"""
-        return html
+        return out
 
     def _delta_html(self, delta):
         if delta is None:
@@ -790,6 +839,7 @@ class ReportGenerator:
             "<li><b>Health Score</b> aggrega le metriche scorable (OK/WARN/CRIT) in un voto 0–100 e una classe A–D.</li>"
             "<li>I badge verde/arancio/rosso confrontano il valore misurato con soglie interne (e con la baseline se presente).</li>"
             "<li>Gli eventi Health sono segnali contestuali (piano energetico, VM, porte chiuse, ecc.), non un secondo score.</li>"
+            "<li><b>n/d</b> = non disponibile su questo OS/host: passa il mouse sopra per la motivazione.</li>"
             "<li>Questo HTML è self-contained: si apre offline anche su Server senza accesso Internet.</li>"
             "</ul>"
         )
@@ -940,7 +990,6 @@ class ReportGenerator:
         bench = data.get("benchmark", {})
         profile = meta.get("profile", "generic")
 
-        hostname = meta.get("hostname", "N/A")
         ref_mode = "Baseline attiva" if self.ref else (
             f"Comparativa {len(self.data_list)} host" if len(self.data_list) > 1 else "Singola esecuzione"
         )
@@ -950,7 +999,7 @@ class ReportGenerator:
         counts = self._status_counts()
 
         summary_html = "".join(f"<li>{b}</li>" for b in self._executive_summary())
-        recs_html = "".join(f"<li>{r}</li>" for r in self._recommendations())
+        recs_html = "".join(f"<li>{html.escape(r)}</li>" for r in self._recommendations())
         how_html = self._how_to_read(profile)
         kpi_html = self._kpi_cards_html(bench)
         metrics_html = self._grouped_metrics_html()
@@ -963,12 +1012,15 @@ class ReportGenerator:
             for ev in health_events:
                 lvl = ev.get("level", "INFO").lower()
                 st = "crit" if lvl == "crit" else ("warn" if lvl == "warn" else "info")
+                code = html.escape(str(ev.get("code", "")))
+                msg = html.escape(str(ev.get("message", "")))
+                ts = html.escape(str(ev.get("timestamp", "")))
                 ev_rows += f"""
                 <tr>
                     <td>{self._badge(st, ev.get('level', 'INFO'))}</td>
-                    <td><code class="ev-code">{ev.get('code', '')}</code></td>
-                    <td>{ev.get('message', '')}</td>
-                    <td class="muted">{ev.get('timestamp', '')}</td>
+                    <td><code class="ev-code">{code}</code></td>
+                    <td>{msg}</td>
+                    <td class="muted">{ts}</td>
                 </tr>"""
             health_html = f"""
             <section class="card alert-card">
@@ -982,7 +1034,8 @@ class ReportGenerator:
         if ports:
             pr = ""
             for port, ok in ports.items():
-                pr += f"<tr><td>{port}</td><td>{self._badge('ok' if ok else 'crit', 'OPEN' if ok else 'CLOSED')}</td></tr>"
+                port_s = html.escape(str(port))
+                pr += f"<tr><td>{port_s}</td><td>{self._badge('ok' if ok else 'crit', 'OPEN' if ok else 'CLOSED')}</td></tr>"
             ports_html = f"""
             <section class="card side-card"><h3>Porte applicative</h3>
             <table><thead><tr><th>Porta</th><th>Stato</th></tr></thead><tbody>{pr}</tbody></table></section>"""
@@ -990,14 +1043,14 @@ class ReportGenerator:
         comp_rows = ""
         if len(self.data_list) > 1:
             for d in self.data_list:
-                h = d.get("meta", {}).get("hostname", "N/A")
+                h = html.escape(str(d.get("meta", {}).get("hostname", "N/A")))
                 comp_rows += f"""<tr>
                     <td>{h}</td>
-                    <td>{self._get_val(d, ['benchmark','disk','seq_write_mb'])} MB/s</td>
-                    <td>{self._get_val(d, ['benchmark','disk','seq_read_mb'])} MB/s</td>
-                    <td>{self._get_val(d, ['benchmark','disk','iops'])}</td>
-                    <td>{self._get_val(d, ['benchmark','cpu_consistency','jitter_score'])}%</td>
-                    <td>{self._get_val(d, ['benchmark','chaos','impact_pct'])}%</td>
+                    <td>{html.escape(str(self._get_val(d, ['benchmark','disk','seq_write_mb'])))} MB/s</td>
+                    <td>{html.escape(str(self._get_val(d, ['benchmark','disk','seq_read_mb'])))} MB/s</td>
+                    <td>{html.escape(str(self._get_val(d, ['benchmark','disk','iops'])))}</td>
+                    <td>{html.escape(str(self._get_val(d, ['benchmark','cpu_consistency','jitter_score'])))}%</td>
+                    <td>{html.escape(str(self._get_val(d, ['benchmark','chaos','impact_pct'])))}%</td>
                 </tr>"""
 
         comparison_section = ""
@@ -1007,11 +1060,44 @@ class ReportGenerator:
             <table><thead><tr><th>Host</th><th>Write</th><th>Read</th><th>IOPS</th><th>CPU Stab.</th><th>Chaos</th></tr></thead>
             <tbody>{comp_rows}</tbody></table></section>"""
 
+        gaps = self._platform_gap_reasons(data)
         ram_speed = ram.get("speed_mhz") or 0
-        ram_speed_txt = f"{ram_speed} MHz" if ram_speed else "n/d"
-        schema_v = data.get("schema_version", "?")
-        engine_v = data.get("engine_version", "?")
+        if gaps.get("ram_speed") or not ram_speed:
+            ram_speed_txt = self._nd(
+                gaps.get("ram_speed")
+                or "Velocità RAM (MHz) non disponibile su questo host."
+            )
+        else:
+            ram_speed_txt = f"{html.escape(str(ram_speed))} MHz"
+
+        power_html = self._value_or_nd(
+            sys_info.get("power_plan"),
+            gaps.get("power_plan"),
+        )
+        if gaps.get("cpu_queue"):
+            queue_html = self._nd(gaps["cpu_queue"])
+        else:
+            queue_html = html.escape(str(virt.get("cpu_queue_length", 0)))
+        if gaps.get("ctx_switches"):
+            ctx_html = self._nd(gaps["ctx_switches"])
+        else:
+            ctx_html = html.escape(str(virt.get("ctx_switches_sec", 0)))
+
+        cpu_model_html = self._value_or_nd(
+            sys_info.get("cpu_model"),
+            None if sys_info.get("cpu_model") else "Modello CPU non esposto da questo OS/hypervisor.",
+        )
+        cores_html = self._value_or_nd(sys_info.get("cores"), None)
+        os_html = self._value_or_nd(sys_info.get("os"), None)
+        uptime_html = self._value_or_nd(sys_info.get("uptime"), None)
+
+        schema_v = html.escape(str(data.get("schema_version", "?")))
+        engine_v = html.escape(str(data.get("engine_version", "?")))
         headline_color = STATUS_COLORS.get(headline_st, "#0284c7")
+        hostname = html.escape(str(meta.get("hostname", "N/A")))
+        meta_date = html.escape(str(meta.get("date", "N/A")))
+        profile_label = html.escape(PROFILE_LABELS.get(profile, profile))
+        headline_html = html.escape(headline)
 
         return f"""<!DOCTYPE html>
 <html lang="it"><head>
@@ -1079,6 +1165,7 @@ th {{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(
 .delta-up {{ color:var(--ok); }}
 .delta-down {{ color:var(--crit); }}
 .muted {{ color:var(--muted); font-size:12px; }}
+.nd {{ color:var(--muted); border-bottom:1px dotted var(--muted); cursor:help; }}
 .ev-code {{ font-size:11px; background:#f1f5f9; padding:2px 6px; border-radius:4px; }}
 .legend {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }}
 .legend .badge {{ margin:0; }}
@@ -1098,8 +1185,8 @@ li {{ margin-bottom:7px; }}
   <div class="brand">HostPulse</div>
   <h1>Report Audit Infrastruttura</h1>
   <div class="hero-meta">
-    <b>{hostname}</b> · {meta.get('date','N/A')} ·
-    <span class="pill">{PROFILE_LABELS.get(profile, profile)}</span>
+    <b>{hostname}</b> · {meta_date} ·
+    <span class="pill">{profile_label}</span>
     <span class="pill">{run_flags}</span>
     <span class="pill">{'Admin' if meta.get('is_admin') else 'Utente standard'}</span>
     <span class="pill">{ref_mode}</span>
@@ -1112,7 +1199,7 @@ li {{ margin-bottom:7px; }}
     {score_ring}
     <div class="verdict-text">
       <div class="kpi-label">Health Score</div>
-      <h2>{headline}</h2>
+      <h2>{headline_html}</h2>
       <p>Classe <b>{self.overall['grade']}</b> · {self.overall['score']}/100 punti</p>
       <div class="status-bar">
         <span class="status-chip ok">{counts.get('ok',0)} OK</span>
@@ -1133,12 +1220,12 @@ li {{ margin-bottom:7px; }}
 <section class="card">
   <h3>Inventario host</h3>
   <div class="sys-grid">
-    <div><b>CPU</b>{sys_info.get('cpu_model','N/A')}<br><span class="muted">{sys_info.get('cores','N/A')}</span></div>
-    <div><b>Sistema operativo</b>{sys_info.get('os','N/A')}<br><span class="muted">Uptime {sys_info.get('uptime','N/A')}</span></div>
-    <div><b>Memoria</b>{ram.get('total_gb',0)} GB · {ram.get('percent_used',0)}% usata<br><span class="muted">{ram_speed_txt}</span></div>
-    <div><b>Disco</b>{disk_hw.get('free_gb',0)}/{disk_hw.get('total_gb',0)} GB liberi<br><span class="muted">{disk_hw.get('percent_used',0)}% usato</span></div>
-    <div><b>Virtualizzazione</b>{'VM' if virt.get('is_vm') else 'Bare metal'}{(' · ' + virt.get('hypervisor','')) if virt.get('is_vm') else ''}<br><span class="muted">NUMA {sys_info.get('numa_nodes',1)}</span></div>
-    <div><b>Energia / contesto</b>{sys_info.get('power_plan','N/A')}<br><span class="muted">Ctx/s {virt.get('ctx_switches_sec',0)} · Queue {virt.get('cpu_queue_length',0)}</span></div>
+    <div><b>CPU</b>{cpu_model_html}<br><span class="muted">{cores_html}</span></div>
+    <div><b>Sistema operativo</b>{os_html}<br><span class="muted">Uptime {uptime_html}</span></div>
+    <div><b>Memoria</b>{html.escape(str(ram.get('total_gb',0)))} GB · {html.escape(str(ram.get('percent_used',0)))}% usata<br><span class="muted">{ram_speed_txt}</span></div>
+    <div><b>Disco</b>{html.escape(str(disk_hw.get('free_gb',0)))}/{html.escape(str(disk_hw.get('total_gb',0)))} GB liberi<br><span class="muted">{html.escape(str(disk_hw.get('percent_used',0)))}% usato</span></div>
+    <div><b>Virtualizzazione</b>{'VM' if virt.get('is_vm') else 'Bare metal'}{(' · ' + html.escape(str(virt.get('hypervisor') or ''))) if virt.get('is_vm') else ''}<br><span class="muted">NUMA {html.escape(str(sys_info.get('numa_nodes',1)))}</span></div>
+    <div><b>Energia / contesto</b>{power_html}<br><span class="muted">Ctx/s {ctx_html} · Queue {queue_html}</span></div>
   </div>
 </section>
 
@@ -1155,12 +1242,12 @@ li {{ margin-bottom:7px; }}
     <section class="card side-card">
       <h3>Dettaglio workload</h3>
       <table>
-        <tr><td>Swap</td><td><b>{ram.get('swap_percent',0)}%</b></td></tr>
-        <tr><td>Crypto hash/s</td><td><b>{bench.get('cpu_real',{}).get('crypto_hash_rate',0)}</b></td></tr>
-        <tr><td>Compressione</td><td><b>{bench.get('cpu_real',{}).get('compress_mb_s',0)} MB/s</b></td></tr>
-        <tr><td>Chaos IOPS sotto carico</td><td><b>{bench.get('chaos',{}).get('disk_iops_under_load',0)}</b></td></tr>
-        <tr><td>CPU avg task</td><td><b>{bench.get('cpu_consistency',{}).get('avg_task_ms',0)} ms</b></td></tr>
-        <tr><td>Stability score</td><td><b>{bench.get('cpu_consistency',{}).get('stability_score','n/d')}</b></td></tr>
+        <tr><td>Swap</td><td><b>{html.escape(str(ram.get('swap_percent',0)))}%</b></td></tr>
+        <tr><td>Crypto hash/s</td><td><b>{html.escape(str(bench.get('cpu_real',{}).get('crypto_hash_rate',0)))}</b></td></tr>
+        <tr><td>Compressione</td><td><b>{html.escape(str(bench.get('cpu_real',{}).get('compress_mb_s',0)))} MB/s</b></td></tr>
+        <tr><td>Chaos IOPS sotto carico</td><td><b>{html.escape(str(bench.get('chaos',{}).get('disk_iops_under_load',0)))}</b></td></tr>
+        <tr><td>CPU avg task</td><td><b>{html.escape(str(bench.get('cpu_consistency',{}).get('avg_task_ms',0)))} ms</b></td></tr>
+        <tr><td>Stability score</td><td><b>{html.escape(str(bench.get('cpu_consistency',{}).get('stability_score','n/d')))}</b></td></tr>
       </table>
     </section>
     <section class="card side-card">
@@ -1187,7 +1274,7 @@ li {{ margin-bottom:7px; }}
         <span>{self._badge('ok', 'A ≥ 85')}</span>
         <span>{self._badge('ok', 'B ≥ 70')}</span>
         <span>{self._badge('warn', 'C ≥ 55')}</span>
-        <span>{self._badge('crit', 'D &lt; 55')}</span>
+        <span>{self._badge('crit', 'D < 55')}</span>
       </div>
       <p class="muted">OK = nella norma · WARN = da monitorare · CRIT = intervento consigliato · INFO = contesto</p>
     </div>

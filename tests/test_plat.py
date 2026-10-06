@@ -47,6 +47,7 @@ def test_linux_collect_infra_emits_gaps(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(plat.LinuxAdapter, "_cpu_governor", staticmethod(lambda: None))
     monkeypatch.setattr(plat.LinuxAdapter, "_numa_nodes", staticmethod(lambda: None))
     monkeypatch.setattr(plat.LinuxAdapter, "_ctx_switches_approx", staticmethod(lambda: None))
+    monkeypatch.setattr(plat.LinuxAdapter, "_ram_speed_mhz", staticmethod(lambda: None))
     monkeypatch.setattr(plat.LinuxAdapter, "_detect_vm", staticmethod(lambda: (False, None)))
 
     snap = plat.LinuxAdapter().collect_infra()
@@ -55,6 +56,65 @@ def test_linux_collect_infra_emits_gaps(monkeypatch: pytest.MonkeyPatch) -> None
     assert "PLATFORM_CPU_QUEUE_NA" in codes
     assert snap.ram_speed_mhz is None
     assert snap.elevated is False
+
+
+def test_linux_ram_speed_from_dmidecode(monkeypatch: pytest.MonkeyPatch) -> None:
+    import plat
+
+    sample = (
+        "Memory Device\n"
+        "\tSpeed: 3200 MT/s\n"
+        "\tConfigured Memory Speed: 2400 MT/s\n"
+        "\tSpeed: Unknown\n"
+        "\tSpeed: 2667 MHz\n"
+    )
+    monkeypatch.setattr(plat.subprocess, "check_output", lambda *a, **k: sample)
+    # Prefer configured over rated JEDEC max
+    assert plat.LinuxAdapter._ram_speed_mhz() == 2400
+
+
+def test_linux_ram_speed_ignores_ddr_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    import plat
+
+    sample = "Memory Device\n\tType: DDR4\n\tSpeed: DDR4-3200\n\tPart Number: PC4-25600\n"
+    monkeypatch.setattr(plat.subprocess, "check_output", lambda *a, **k: sample)
+    assert plat.LinuxAdapter._ram_speed_mhz() is None
+
+
+def test_linux_ram_speed_dmidecode_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import plat
+
+    def _boom(*_a, **_k):
+        raise FileNotFoundError("dmidecode")
+
+    monkeypatch.setattr(plat.subprocess, "check_output", _boom)
+    assert plat.LinuxAdapter._ram_speed_mhz() is None
+
+
+def test_linux_cpu_model_from_proc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from engine import HostPulseEngine
+
+    cpuinfo = tmp_path / "cpuinfo"
+    cpuinfo.write_text("processor : 0\nmodel name : Intel Xeon E5\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "engine.Path",
+        lambda p: cpuinfo if str(p) == "/proc/cpuinfo" else Path(p),
+    )
+    assert HostPulseEngine._linux_cpu_model() == "Intel Xeon E5"
+
+
+def test_linux_cpu_model_missing_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    from engine import HostPulseEngine
+
+    class MissingPath:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def read_text(self, *a, **k):
+            raise OSError("nope")
+
+    monkeypatch.setattr("engine.Path", MissingPath)
+    assert HostPulseEngine._linux_cpu_model() == ""
 
 
 def test_parse_ping_latencies() -> None:

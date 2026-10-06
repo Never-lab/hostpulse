@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — Linux report polish + safer packaging
+
+- Report HTML: valori non disponibili come **n/d** con tooltip hover (motivi `PLATFORM_*_NA`)
+- Linux: modello CPU da `/proc/cpuinfo`; RAM MHz via `dmidecode` (preferisce configured speed)
+- Pacchetto Linux: include `bin/ui/` per la GUI; launcher accetta `HOSTPULSE_PYTHON` assoluto
+- Hardening report: escape HTML su inventario/health/summary; filename host sanitizzati
+- Windows: PowerShell/WMIC senza `shell=True`
+
 ## 0.1.3 — Live shell UI
 
 - Live GUI: Setup → Live → Done shell, report-aligned dark theme, Never-lab presets (+ custom in config)

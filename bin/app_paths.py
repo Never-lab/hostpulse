@@ -1,6 +1,7 @@
 """Percorsi compatibili con esecuzione da sorgente e da EXE PyInstaller."""
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -8,6 +9,13 @@ from pathlib import Path
 
 def is_frozen() -> bool:
     return getattr(sys, "frozen", False)
+
+
+def safe_filename_component(name: str, *, fallback: str = "host", max_len: int = 64) -> str:
+    """Sanitize hostname (or similar) for use in report/audit filenames."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", (name or "").strip())
+    cleaned = cleaned.strip("._-")[:max_len]
+    return cleaned or fallback
 
 
 def get_bundle_dir() -> Path:

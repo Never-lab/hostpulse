@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional
 from cancel import check_cancel
 from engine import HostPulseEngine
 from reporter_generator import ReportGenerator
+from app_paths import safe_filename_component
 
 # step index for progress bar: 0..PROGRESS_TOTAL
 PROGRESS_TOTAL = 6
@@ -135,7 +136,7 @@ def run_audit(
         os.makedirs(export_dir, exist_ok=True)
         reporter.export_presentation_assets(export_dir)
 
-    report_html = f"REPORT_{engine.data['meta']['hostname']}.html"
+    report_html = f"REPORT_{safe_filename_component(str(engine.data['meta'].get('hostname') or ''))}.html"
     html_path = os.path.join(bin_dir, report_html)
     Path(html_path).write_text(reporter.render(), encoding="utf-8")
 

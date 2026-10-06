@@ -1,7 +1,8 @@
 import os, psutil, platform, time, multiprocessing, json, statistics, random, socket, tempfile, hashlib, zlib, subprocess, threading
 from datetime import datetime
+from pathlib import Path
 
-from app_paths import ensure_runtime_dirs, get_app_base_dir, get_config_dir, get_results_dir
+from app_paths import ensure_runtime_dirs, get_app_base_dir, get_config_dir, get_results_dir, safe_filename_component
 from cancel import check_cancel
 from plat import get_adapter, parse_ping_latencies_ms
 from schema import stamp_audit
@@ -201,10 +202,26 @@ class HostPulseEngine:
             }
         )
 
+    @staticmethod
+    def _linux_cpu_model() -> str:
+        """platform.processor() is often empty on Linux; prefer /proc/cpuinfo."""
+        try:
+            text = Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+        for line in text.splitlines():
+            if line.lower().startswith("model name"):
+                parts = line.split(":", 1)
+                if len(parts) == 2 and parts[1].strip():
+                    return parts[1].strip()
+        return ""
+
     def collect_sys_info(self):
         info = self.data["sys_info"]
         info["os"] = f"{platform.system()} {platform.release()}"
-        info["cpu_model"] = platform.processor()
+        info["cpu_model"] = platform.processor() or ""
+        if not info["cpu_model"].strip() and platform.system().lower() == "linux":
+            info["cpu_model"] = self._linux_cpu_model()
         info["cores"] = f"{psutil.cpu_count(logical=False)} P / {psutil.cpu_count(logical=True)} L"
         info["uptime"] = str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
 
@@ -601,7 +618,8 @@ class HostPulseEngine:
     def save_results(self):
         # Re-stamp so on-disk JSON always carries current contract versions.
         stamp_audit(self.data, quick=self.quick, production_safe=self.production_safe)
-        filename = f"audit_{self.data['meta']['hostname']}_{self.data['meta']['timestamp']}.json"
+        host = safe_filename_component(str(self.data["meta"].get("hostname") or ""))
+        filename = f"audit_{host}_{self.data['meta']['timestamp']}.json"
         target = os.path.join(self.results_dir, filename)
         with open(target, 'w', encoding='utf-8') as f:
             json.dump(self.data, f, indent=4)

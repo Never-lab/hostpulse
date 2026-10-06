@@ -23,3 +23,11 @@ def test_config_and_results_dirs_under_base() -> None:
 def test_config_example_exists() -> None:
     example = app_paths.get_app_base_dir() / "config" / "config.example.json"
     assert example.is_file()
+
+
+def test_safe_filename_component() -> None:
+    assert app_paths.safe_filename_component("web-01") == "web-01"
+    assert app_paths.safe_filename_component("evil/../x<script>") == "evil_.._x_script"
+    assert app_paths.safe_filename_component("!!!") == "host"
+    assert app_paths.safe_filename_component("") == "host"
+    assert len(app_paths.safe_filename_component("a" * 200)) == 64
