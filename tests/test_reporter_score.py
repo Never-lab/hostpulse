@@ -50,3 +50,32 @@ def test_html_cpu_chart_has_labeled_axes() -> None:
     assert "Utilizzo CPU durante stress test" in html
     assert "Media" in html and "Picco" in html
     assert '0%</text>' in html or "0%" in html
+
+
+def test_verdict_card_is_full_width() -> None:
+    html = ReportGenerator(_load(), reference=None).render()
+    assert "grid-template-columns:160px" not in html
+    assert ".verdict-row { margin:-20px 0 20px; }" in html
+
+
+def test_cpu_freq_panel_points_use_local_coords() -> None:
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    data["benchmark"]["cpu_series"] = {
+        "time": [0, 1, 2, 3, 4],
+        "usage": [10, 40, 70, 50, 20],
+        "freq": [800, 1200, 2200, 1800, 900],
+    }
+    html = ReportGenerator(data, reference=None).render()
+    assert "Frequenza CPU" in html
+    assert 'transform="translate(0,308)"' in html
+    # Polyline Y must stay inside the local freq panel (rect y=22..110), not absolute SVG space.
+    import re
+
+    m = re.search(
+        r'<g transform="translate\(0,308\)">.*?<polyline[^>]*points="([^"]+)"',
+        html,
+        re.S,
+    )
+    assert m, "freq polyline missing inside translated group"
+    ys = [float(p.split(",")[1]) for p in m.group(1).split()]
+    assert ys and min(ys) >= 22 and max(ys) <= 110

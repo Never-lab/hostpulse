@@ -930,9 +930,11 @@ class ReportGenerator:
             fmin, fmax = min(freq_vals), max(freq_vals)
             fspan = max(fmax - fmin, 1.0)
             fh = 88
-            fy0 = height + 28
+            # Coordinates are local to the translated <g> below (not absolute SVG Y).
+            freq_top = 32
+
             def y_freq(f):
-                return fy0 + (1.0 - (float(f) - fmin) / fspan) * (fh - 20)
+                return freq_top + (1.0 - (float(f) - fmin) / fspan) * (fh - 20)
 
             freq_pts = " ".join(
                 f"{x_at(t):.1f},{y_freq(f):.1f}" for t, f in zip(times, freq) if f > 0
@@ -1119,9 +1121,10 @@ body {{ font-family:Segoe UI,system-ui,-apple-system,sans-serif; background:var(
 .hero-meta {{ font-size:14px; opacity:.92; }}
 .hero-meta b {{ font-weight:600; }}
 .pill {{ display:inline-block; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:2px 10px; font-size:12px; margin-right:6px; }}
-.verdict-row {{ display:grid; grid-template-columns:160px 1fr; gap:24px; align-items:center; margin:-20px 0 20px; }}
-@media (max-width:720px) {{ .verdict-row {{ grid-template-columns:1fr; }} }}
+.verdict-row {{ margin:-20px 0 20px; }}
 .verdict-card {{ background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px 24px; box-shadow:0 8px 24px rgba(15,23,42,.08); display:flex; gap:20px; align-items:center; }}
+.verdict-card .score-ring {{ flex:0 0 auto; }}
+.verdict-text {{ min-width:0; flex:1; }}
 .verdict-text h2 {{ margin:0 0 6px; font-size:20px; color:{headline_color}; }}
 .verdict-text p {{ margin:0; color:var(--muted); font-size:14px; }}
 .status-bar {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — Report layout fix (Health Score + CPU freq chart)
+
+- Health Score card: full-width layout (no spurious 160px grid column)
+- CPU stress chart: frequency polyline uses local SVG coordinates inside the translated panel
+- Tests for verdict layout and freq panel coordinates
+
 ## 0.1.4 — Linux report polish + safer packaging
 
 - Report HTML: valori non disponibili come **n/d** con tooltip hover (motivi `PLATFORM_*_NA`)
