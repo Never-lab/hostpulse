@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.4.1 — Report layout fix (Health Score + CPU freq chart)
+## 1.4.1 — Report layout fix (Health Score + CPU freq chart)
+
+Renumbered from mistaken tag `v0.4.1` (SemVer 3-part; equivalent to intended `0.1.4.1`).
 
 - Health Score card: full-width layout (no spurious 160px grid column)
 - CPU stress chart: frequency polyline uses local SVG coordinates inside the translated panel
