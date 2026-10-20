@@ -22,3 +22,7 @@ On-disk and in-memory audit payloads use a versioned contract.
 
 Source of truth for stamping: `bin/schema.py` (`stamp_audit`).  
 Reporter and GUI should read this shape only.
+
+## Compare mode
+
+Compare loads prior audits from `results/` for the **same `meta.hostname`** only, ordered by `meta.timestamp`. The Health Score / scorecard always uses the run just completed (`ReportGenerator.main_d`).

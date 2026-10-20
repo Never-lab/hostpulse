@@ -127,7 +127,12 @@ def run_audit(
     progress("6/6 · Report", 6, "[6/6] Generazione report HTML...")
     ref = _load_baseline(root_dir)
     if compare:
-        reporter = ReportGenerator(engine.get_history(), reference=ref, style="corporate")
+        host = str(engine.data["meta"].get("hostname") or "")
+        history = engine.get_history(hostname=host) if host else []
+        cur_ts = engine.data["meta"].get("timestamp")
+        history = [h for h in history if h.get("meta", {}).get("timestamp") != cur_ts]
+        history.append(engine.data)
+        reporter = ReportGenerator(history, reference=ref, style="corporate")
     else:
         reporter = ReportGenerator(engine.data, reference=ref, style="corporate")
 
