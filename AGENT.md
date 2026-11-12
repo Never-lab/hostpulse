@@ -16,8 +16,8 @@ Ordine obbligato:
 2. Implementa solo ciò che deve entrare *in questa* release
 3. Piece-check (`CLAUDE.md` loop) + `pytest -q`
 4. Bump `bin/version.py` + `pyproject.toml` + `CHANGELOG.md` (stesso `X.Y.Z`)
-5. Tag `vX.Y.Z` su commit allineato → workflow Release
-6. Smoke pacchetti (`HostPulse-windows.zip` intera cartella con `_internal\`; Linux `./hostpulse.sh run --quick --production-safe`)
+5. Tag `vX.Y.Z` su commit allineato → workflow Release (gate: `scripts/check_release_version.py` + pytest prima degli asset)
+6. Smoke pacchetti (`HostPulse-windows.zip` intera cartella con `_internal\` + `config\baseline.json`; Linux `./hostpulse.sh run --quick --production-safe`)
 
 ---
 
@@ -34,7 +34,7 @@ Copia in chat / issue epic e spunta. Ogni finding non banale → `gh issue creat
 
 ### B. Packaging Windows
 
-- [ ] Layout **onedir**: `HostPulse.exe` + `_internal\` + `config\` (+ `baseline.json` se previsto)
+- [ ] Layout **onedir**: `HostPulse.exe` + `_internal\` + `config\` (incl. `baseline.json`)
 - [ ] Docs dicono ancora “distribuisci l’intera cartella” (`DEPLOY.md`, `docs/WINDOWS_AV.md`)
 - [ ] `SHA256.txt` nel pacchetto; ideale anche hash in body Release
 - [ ] Spec: no UPX; `upx=False`; non regressare a onefile senza issue esplicita

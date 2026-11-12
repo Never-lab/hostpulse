@@ -45,3 +45,4 @@ def test_build_linux_produces_package() -> None:
 def test_build_linux_script_copies_ui() -> None:
     text = (ROOT / "build_linux.sh").read_text(encoding="utf-8")
     assert "bin/ui" in text
+    assert "baseline.json" in text

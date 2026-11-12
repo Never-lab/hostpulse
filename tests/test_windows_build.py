@@ -6,6 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_build_exe_copies_baseline_json() -> None:
+    """Windows package must ship config/baseline.json (parity with Linux)."""
+    text = (ROOT / "build_exe.ps1").read_text(encoding="utf-8")
+    assert "baseline.json" in text
+    assert r"config\baseline.json" in text or "config/baseline.json" in text
+
+
 def test_generate_version_info_writes_file() -> None:
     import subprocess
 

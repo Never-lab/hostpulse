@@ -8,8 +8,10 @@ Tag `vX.Y.Z` su GitHub → [Releases](https://github.com/Never-lab/hostpulse/rel
 
 | Asset | Piattaforma | Contenuto |
 |-------|-------------|-----------|
-| `HostPulse-windows.zip` | Windows | `HostPulse.exe`, `config/config.json`, `results/` |
-| `HostPulse-linux.zip` | Linux | `hostpulse.sh`, `bin/`, `config/`, `requirements.txt`, `results/` |
+| `HostPulse-windows.zip` | Windows | `HostPulse.exe`, `_internal\`, `config/config.json`, `config/baseline.json`, `results/` |
+| `HostPulse-linux.zip` | Linux | `hostpulse.sh`, `bin/`, `config/` (incl. `baseline.json`), `requirements.txt`, `results/` |
+
+**Release gate:** il workflow Release fallisce se il tag `vX.Y.Z` non coincide con `bin/version.py` e `pyproject.toml`, o se `pytest` / smoke Linux non passano.
 
 ## Windows (EXE)
 
