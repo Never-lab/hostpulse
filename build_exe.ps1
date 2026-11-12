@@ -39,6 +39,7 @@ Write-Host "==> Firma Authenticode (se configurata)..."
 
 New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "config") -Force | Out-Null
 Copy-Item (Join-Path $Root "config\config.example.json") (Join-Path $ReleaseDir "config\config.json") -Force
+Copy-Item (Join-Path $Root "config\baseline.json") (Join-Path $ReleaseDir "config\baseline.json") -Force
 New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "results") -Force | Out-Null
 
 $hash = (Get-FileHash -Algorithm SHA256 $ExePath).Hash

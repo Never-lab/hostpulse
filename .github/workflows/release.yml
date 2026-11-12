@@ -9,7 +9,33 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Tag matches version
+        run: python scripts/check_release_version.py --tag "${GITHUB_REF_NAME}"
+
+      - name: Ruff
+        run: python -m ruff check bin tests
+
+      - name: Pytest
+        run: python -m pytest -q
+
   windows-exe:
+    needs: [verify]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +68,7 @@ jobs:
           $pkg = "dist\windows\HostPulse"
           if (-not (Test-Path "$pkg\HostPulse.exe")) { throw "HostPulse.exe missing in $pkg" }
           if (-not (Test-Path "$pkg\_internal")) { throw "_internal folder missing (onedir layout required)" }
+          if (-not (Test-Path "$pkg\config\baseline.json")) { throw "config\baseline.json missing (required for report deltas)" }
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\HostPulse-windows.zip" -Force
 
       - uses: actions/upload-artifact@v7
@@ -50,16 +77,26 @@ jobs:
           path: dist/HostPulse-windows.zip
 
   linux-package:
+    needs: [verify]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build Linux package
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build Linux package + smoke
         run: |
           chmod +x build_linux.sh scripts/hostpulse.sh
           ./build_linux.sh
           test -f dist/HostPulse-linux.zip
           test -x dist/linux/HostPulse/hostpulse.sh
+          test -f dist/linux/HostPulse/config/baseline.json
+          HOSTPULSE_PYTHON=python ./dist/linux/HostPulse/hostpulse.sh run --quick --production-safe --out /tmp/hostpulse-release.html
+          test -f /tmp/hostpulse-release.html
 
       - uses: actions/upload-artifact@v7
         with:
