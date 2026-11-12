@@ -28,7 +28,13 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--compare", action="store_true", help="Compare with previous results")
     run.add_argument("--out", type=Path, default=None, help="HTML output path (default: bin/REPORT_<host>.html)")
     run.add_argument("--pdf", type=Path, nargs="?", const=True, default=None, help="Export PDF (optional path)")
-    run.add_argument("--no-slides", action="store_true", help="Skip PNG slide asset export")
+    run.add_argument(
+        "--slides",
+        action="store_true",
+        help="Export PNG slide assets (off by default; HTML report is the deliverable)",
+    )
+    # Deprecated alias: slides are off by default now; keep parse-compatible for old scripts.
+    run.add_argument("--no-slides", action="store_true", help=argparse.SUPPRESS)
     return p
 
 
@@ -55,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
             quick=args.quick,
             production_safe=args.production_safe,
             compare=args.compare,
-            export_slides=not args.no_slides,
+            export_slides=args.slides,
             on_progress=on_progress,
         )
     except AuditCancelled as exc:
