@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import multiprocessing
 import sys
 from pathlib import Path
 
@@ -16,6 +17,11 @@ from load_safety import CLI_FULL_LOAD_WARN, needs_full_load_confirm  # noqa: E40
 from orchestrator import run_audit  # noqa: E402
 from pdf_export import PdfExportError, html_file_to_pdf  # noqa: E402
 
+CLI_FULL_LOAD_FORCE_NOTE = (
+    "WARNING: proceeding with full load because --force was set "
+    "(app/db profile without --production-safe)."
+)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="hostpulse", description="HostPulse headless audit")
@@ -25,6 +31,14 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--profile", choices=("generic", "app_server", "db_server"), default="generic")
     run.add_argument("--quick", action="store_true")
     run.add_argument("--production-safe", action="store_true")
+    run.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Allow app_server/db_server full load without --production-safe "
+            "(required; otherwise the CLI exits non-zero)"
+        ),
+    )
     run.add_argument("--compare", action="store_true", help="Compare with previous results")
     run.add_argument("--out", type=Path, default=None, help="HTML output path (default: bin/REPORT_<host>.html)")
     run.add_argument("--pdf", type=Path, nargs="?", const=True, default=None, help="Export PDF (optional path)")
@@ -39,6 +53,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if getattr(sys, "frozen", False):
+        multiprocessing.freeze_support()
+
     args = _build_parser().parse_args(argv)
     if args.command != "run":
         return 2
@@ -49,6 +66,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if needs_full_load_confirm(args.profile, args.production_safe):
         print(CLI_FULL_LOAD_WARN, file=sys.stderr)
+        if not args.force:
+            print(
+                "Refusing full-load app/db run without --production-safe. "
+                "Pass --force to override, or use --production-safe.",
+                file=sys.stderr,
+            )
+            return 2
+        print(CLI_FULL_LOAD_FORCE_NOTE, file=sys.stderr)
 
     def on_progress(_status: str, _step: int, log: str) -> None:
         print(log, flush=True)

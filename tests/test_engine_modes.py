@@ -17,6 +17,11 @@ def test_quick_mode_caps_config() -> None:
     assert engine.config["DISK_IOPS_ITERATIONS"] <= 2000
 
 
+def test_quick_mode_skips_chaos() -> None:
+    engine = HostPulseEngine(quick=True, profile="generic", production_safe=False)
+    assert engine.skip_chaos is True
+
+
 def test_production_safe_caps_and_skips_chaos() -> None:
     engine = HostPulseEngine(quick=False, profile="db_server", production_safe=True)
     assert engine.skip_chaos is True

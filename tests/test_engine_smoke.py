@@ -23,6 +23,14 @@ def test_config_example_loads() -> None:
     assert "DISK_SEQ_MB" in data
 
 
+def test_config_example_defaults_are_customer_safe() -> None:
+    path = ROOT / "config" / "config.example.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["PRODUCTION_SAFE"] is True
+    assert int(data["RAM_TEST_SIZE_MB"]) <= 512
+    assert int(data["DISK_SEQ_MB"]) <= 512
+
+
 def test_engine_data_structure_shape() -> None:
     engine = HostPulseEngine(quick=True, profile="generic", production_safe=True)
     data = engine.data

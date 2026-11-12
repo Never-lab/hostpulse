@@ -104,12 +104,17 @@ class ReportGenerator:
         return None
 
     def _classify(self, value, good, warn, higher_is_better=True):
-        if value is None or value == "" or (isinstance(value, (int, float)) and value == 0 and good > 0):
+        if value is None or value == "":
             return "na", "Dato non disponibile"
         try:
             v = float(value)
         except (TypeError, ValueError):
             return "na", "Valore non numerico"
+
+        # Throughput/rate: explicit 0 is a failed measurement, not missing data.
+        # Latency/lower-is-better: 0 (e.g. sub-ms rounded) remains scorable.
+        if higher_is_better and v == 0 and good > 0:
+            return "crit", "Critico: prestazioni insufficienti"
 
         if higher_is_better:
             if v >= good:
@@ -220,30 +225,34 @@ class ReportGenerator:
                 iops_warn,
             )
         )
-        rows.append(
-            self._metric_row(
-                "db_latency",
-                "Latenza DB simulata",
-                ["benchmark", "disk", "db_sim_latency_ms"],
-                "ms",
-                "Latenza media su letture random 4K. Proxy per risposta storage su query DB.",
-                db_good,
-                db_warn,
-                higher_is_better=False,
+        # Only score latency when disk I/O ran; bare 0 after skip/fail must not look "perfect".
+        disk_iops = self._get_val(data, ["benchmark", "disk", "iops"], default=0) or 0
+        disk_write = self._get_val(data, ["benchmark", "disk", "seq_write_mb"], default=0) or 0
+        if disk_iops > 0 or disk_write > 0:
+            rows.append(
+                self._metric_row(
+                    "db_latency",
+                    "Latenza DB simulata",
+                    ["benchmark", "disk", "db_sim_latency_ms"],
+                    "ms",
+                    "Latenza media su letture random 4K. Proxy per risposta storage su query DB.",
+                    db_good,
+                    db_warn,
+                    higher_is_better=False,
+                )
             )
-        )
-        rows.append(
-            self._metric_row(
-                "db_p99",
-                "Latenza P99 disco",
-                ["benchmark", "disk", "latency_p99_ms"],
-                "ms",
-                "Percentile 99 delle latenze disco. Picchi che impattano le transazioni lente.",
-                db_good * 2,
-                db_warn * 2,
-                higher_is_better=False,
+            rows.append(
+                self._metric_row(
+                    "db_p99",
+                    "Latenza P99 disco",
+                    ["benchmark", "disk", "latency_p99_ms"],
+                    "ms",
+                    "Percentile 99 delle latenze disco. Picchi che impattano le transazioni lente.",
+                    db_good * 2,
+                    db_warn * 2,
+                    higher_is_better=False,
+                )
             )
-        )
         rows.append(
             self._metric_row(
                 "cpu_jitter",

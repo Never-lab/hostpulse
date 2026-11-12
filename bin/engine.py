@@ -1,3 +1,4 @@
+import errno
 import os, psutil, platform, time, multiprocessing, json, statistics, random, socket, tempfile, hashlib, zlib, subprocess, threading
 from datetime import datetime
 from pathlib import Path
@@ -175,11 +176,12 @@ class HostPulseEngine:
         return default
 
     def _apply_quick_mode(self):
-        """Riduce durata e iterazioni per una analisi rapida."""
+        """Riduce durata e iterazioni per una analisi rapida; salta il chaos load."""
         self.config["CPU_GRAPH_DURATION_SEC"] = min(15, self.config.get("CPU_GRAPH_DURATION_SEC", 300))
         self.config["RAM_TEST_SIZE_MB"] = min(256, self.config.get("RAM_TEST_SIZE_MB", 512))
         self.config["DISK_SEQ_MB"] = min(128, self.config.get("DISK_SEQ_MB", 512))
         self.config["DISK_IOPS_ITERATIONS"] = min(2000, self.config.get("DISK_IOPS_ITERATIONS", 10000))
+        self.skip_chaos = True
 
     def _apply_production_safe(self):
         """Riduce carico per esecuzione su VM in produzione (meno I/O, meno CPU, no chaos)."""
@@ -408,7 +410,7 @@ class HostPulseEngine:
         self.data["benchmark"]["cpu_real"]["compress_mb_s"] = round(1.0 / (time.perf_counter() - start), 1)
 
     def disk_benchmarks(self):
-        sz_mb = self.config["DISK_SEQ_MB"]
+        sz_mb = int(self.config["DISK_SEQ_MB"])
         disk_test_path = self.config.get("DISK_TEST_PATH") or ""
         if disk_test_path and os.path.isdir(disk_test_path):
             try:
@@ -434,58 +436,103 @@ class HostPulseEngine:
             with tempfile.NamedTemporaryFile(delete=False) as tf:
                 path = tf.name
         try:
-            data = os.urandom(1024*1024)
-            start = time.perf_counter()
-            with open(path, "wb") as f:
-                for _ in range(sz_mb): f.write(data)
-                f.flush(); os.fsync(f.fileno())
-            self.data["benchmark"]["disk"]["seq_write_mb"] = round(sz_mb/(time.perf_counter() - start), 2)
-            
-            # Read sequenziale
-            with open(path, "rb") as f:
+            need_bytes = int(sz_mb * 1024 * 1024 * 1.1)
+            try:
+                free = psutil.disk_usage(os.path.dirname(path) or path).free
+            except (OSError, ValueError):
+                free = None
+            if free is not None and free < need_bytes:
+                max_mb = int(free / (1024 * 1024 * 1.1))
+                floor_mb = 16
+                if max_mb < floor_mb:
+                    free_mb = free // (1024 * 1024)
+                    self._push_health(
+                        "CRIT",
+                        "DISK_INSUFFICIENT_SPACE",
+                        f"Spazio libero insufficiente per test disco ({free_mb} MB liberi, servono ~{sz_mb} MB). Test sequenziale saltato.",
+                    )
+                    return
+                self._push_health(
+                    "WARN",
+                    "DISK_INSUFFICIENT_SPACE",
+                    f"Spazio libero limitato: test disco ridotto da {sz_mb} a {max_mb} MB.",
+                )
+                sz_mb = max_mb
+
+            try:
+                data = os.urandom(1024 * 1024)
                 start = time.perf_counter()
-                while f.read(1024*1024): pass
-                self.data["benchmark"]["disk"]["seq_read_mb"] = round(sz_mb/(time.perf_counter() - start), 2)
+                with open(path, "wb") as f:
+                    for _ in range(sz_mb):
+                        f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                self.data["benchmark"]["disk"]["seq_write_mb"] = round(sz_mb / (time.perf_counter() - start), 2)
 
-            # IOPS e latenze su blocchi piccoli (simulazione workload DB)
-            iterations = self.config.get("DISK_IOPS_ITERATIONS", 10000)
-            block_size = 4096
-            latencies = []
-            total_bytes = 0
-            with open(path, "rb") as f:
-                file_size = sz_mb * 1024 * 1024
-                for i in range(iterations):
-                    if i % 500 == 0:
-                        self._check_cancel()
-                    offset = random.randint(0, max(0, file_size - block_size))
-                    t0 = time.perf_counter()
-                    f.seek(offset)
-                    chunk = f.read(block_size)
-                    t1 = time.perf_counter()
-                    if not chunk:
-                        break
-                    latencies.append((t1 - t0) * 1000.0)
-                    total_bytes += len(chunk)
+                # Read sequenziale
+                with open(path, "rb") as f:
+                    start = time.perf_counter()
+                    while f.read(1024 * 1024):
+                        pass
+                    self.data["benchmark"]["disk"]["seq_read_mb"] = round(
+                        sz_mb / (time.perf_counter() - start), 2
+                    )
 
-            if latencies:
-                total_time_s = sum(l / 1000.0 for l in latencies)
-                iops = len(latencies) / total_time_s if total_time_s > 0 else 0
-                p99 = sorted(latencies)[int(len(latencies) * 0.99) - 1] if len(latencies) >= 100 else max(latencies)
-                avg_ms = statistics.mean(latencies)
-                self.data["benchmark"]["disk"]["iops"] = int(iops)
-                self.data["benchmark"]["disk"]["latency_p99_ms"] = round(p99, 2)
-                self.data["benchmark"]["disk"]["db_sim_latency_ms"] = round(avg_ms, 2)
+                # IOPS e latenze su blocchi piccoli (simulazione workload DB)
+                iterations = self.config.get("DISK_IOPS_ITERATIONS", 10000)
+                block_size = 4096
+                latencies = []
+                total_bytes = 0
+                with open(path, "rb") as f:
+                    file_size = sz_mb * 1024 * 1024
+                    for i in range(iterations):
+                        if i % 500 == 0:
+                            self._check_cancel()
+                        offset = random.randint(0, max(0, file_size - block_size))
+                        t0 = time.perf_counter()
+                        f.seek(offset)
+                        chunk = f.read(block_size)
+                        t1 = time.perf_counter()
+                        if not chunk:
+                            break
+                        latencies.append((t1 - t0) * 1000.0)
+                        total_bytes += len(chunk)
 
-                if self.profile == "db_server":
-                    warn_ms = float(self.config.get("WARN_DB_LATENCY_MS", 10))
-                    if avg_ms > warn_ms:
-                        self._push_health(
-                            "WARN",
-                            "DB_LATENCY_HIGH",
-                            f"Latenza disco elevata per workload DB: {avg_ms:.2f} ms (soglia {warn_ms} ms).",
-                        )
+                if latencies:
+                    total_time_s = sum(l / 1000.0 for l in latencies)
+                    iops = len(latencies) / total_time_s if total_time_s > 0 else 0
+                    p99 = (
+                        sorted(latencies)[int(len(latencies) * 0.99) - 1]
+                        if len(latencies) >= 100
+                        else max(latencies)
+                    )
+                    avg_ms = statistics.mean(latencies)
+                    self.data["benchmark"]["disk"]["iops"] = int(iops)
+                    self.data["benchmark"]["disk"]["latency_p99_ms"] = round(p99, 2)
+                    self.data["benchmark"]["disk"]["db_sim_latency_ms"] = round(avg_ms, 2)
+
+                    if self.profile == "db_server":
+                        warn_ms = float(self.config.get("WARN_DB_LATENCY_MS", 10))
+                        if avg_ms > warn_ms:
+                            self._push_health(
+                                "WARN",
+                                "DB_LATENCY_HIGH",
+                                f"Latenza disco elevata per workload DB: {avg_ms:.2f} ms (soglia {warn_ms} ms).",
+                            )
+            except OSError as exc:
+                code = (
+                    "DISK_INSUFFICIENT_SPACE"
+                    if getattr(exc, "errno", None) == errno.ENOSPC
+                    else "DISK_WRITE_FAILED"
+                )
+                self._push_health(
+                    "CRIT",
+                    code,
+                    f"Errore scrittura/lettura test disco: {exc}",
+                )
         finally:
-            if os.path.exists(path): os.remove(path)
+            if os.path.exists(path):
+                os.remove(path)
 
     def ram_benchmark(self):
         """Misura una stima di bandwidth di copia RAM (GB/s)."""

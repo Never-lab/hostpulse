@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import multiprocessing
 import sys
 
 if getattr(sys, "frozen", False):
@@ -14,6 +15,8 @@ from ui.app import AuditApp  # re-export for tests/test_imports.py
 
 
 def main() -> None:
+    if getattr(sys, "frozen", False):
+        multiprocessing.freeze_support()
     ensure_runtime_dirs()
     app = AuditApp()
     app.mainloop()
