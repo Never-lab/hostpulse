@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.3 — Fix Linux release smoke deps
+
+- Release `linux-package` job installs `requirements.txt` before `HOSTPULSE_PYTHON` smoke (matches CI; unblocks tag-triggered assets after 1.4.2)
+
 ## 1.4.2 — High-priority audit safety fixes
 
 - Health Score: zero throughput is critical (failed/partial runs cannot score A/100); sub-ms latency stays scorable; latency rows omitted when disk never ran

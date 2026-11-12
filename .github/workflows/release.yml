@@ -90,6 +90,9 @@ jobs:
 
       - name: Build Linux package + smoke
         run: |
+          # HOSTPULSE_PYTHON expects deps already installed (same as CI / air-gap override).
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
           chmod +x build_linux.sh scripts/hostpulse.sh
           ./build_linux.sh
           test -f dist/HostPulse-linux.zip
