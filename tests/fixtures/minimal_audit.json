@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "engine_version": "0.1.0",
+  "engine_version": "1.4.1",
   "meta": {
     "hostname": "ci-fixture",
     "date": "2026-07-24 12:00:00",
