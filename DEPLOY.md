@@ -92,8 +92,15 @@ L’engine usa la **cartella del pacchetto** come root (`config/`, `results/`). 
 
 ## Configurazione (`config/config.json`)
 
+First-run copies `config/config.example.json` → `config/config.json`. The example
+defaults are customer-safe: `PRODUCTION_SAFE: true`, `RAM_TEST_SIZE_MB` /
+`DISK_SEQ_MB` at 512 (aligned with engine defaults). Full-load App/DB runs
+(`PRODUCTION_SAFE: false`, larger sizes, chaos) are opt-in via UI preset or
+explicit config/CLI flags — not the out-of-box path.
+
 - `PROFILE`: `"generic"` | `"app_server"` | `"db_server"`
-- `PRODUCTION_SAFE`: `true` — riduce carico su VM produzione
+- `PRODUCTION_SAFE`: `true` — riduce carico su VM produzione (example default)
+- `RAM_TEST_SIZE_MB` / `DISK_SEQ_MB`: example ≤ 512; raise only on lab hosts
 - `WARN_DB_LATENCY_MS`: soglia latenza disco (ms) profilo DB (es. 10)
 - `DISK_TEST_PATH`: directory test disco (es. volume dati); vuoto = temp di sistema
 - `APP_PORT_CHECK`: porta/e per profilo app server; `null` = nessun check

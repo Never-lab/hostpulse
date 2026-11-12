@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from engine import HostPulseEngine
@@ -20,6 +21,26 @@ def test_disk_benchmarks_writes_keys_quick_tmp(tmp_path) -> None:
     assert disk["seq_write_mb"] > 0
     assert disk["seq_read_mb"] > 0
     assert disk["iops"] >= 0
+
+
+def test_disk_benchmarks_skips_when_free_space_too_low(tmp_path, monkeypatch) -> None:
+    engine = HostPulseEngine(quick=True, production_safe=False)
+    engine.config["DISK_SEQ_MB"] = 128
+    engine.config["DISK_IOPS_ITERATIONS"] = 50
+    engine.config["DISK_TEST_PATH"] = str(tmp_path)
+
+    monkeypatch.setattr(
+        "engine.psutil.disk_usage",
+        lambda _p: SimpleNamespace(free=8 * 1024 * 1024),
+    )
+
+    engine.disk_benchmarks()
+
+    disk = engine.data["benchmark"]["disk"]
+    assert disk["seq_write_mb"] == 0
+    assert disk["seq_read_mb"] == 0
+    codes = [e["code"] for e in engine.data["health"]["events"]]
+    assert "DISK_INSUFFICIENT_SPACE" in codes
 
 
 def test_chaos_skip_production_safe_preserves_json_keys() -> None:
