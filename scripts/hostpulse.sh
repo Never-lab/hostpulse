@@ -50,8 +50,24 @@ resolve_python() {
   fi
 
   PY="$VENV_PY"
-  "$PY" -m pip install -q --upgrade pip
-  "$PY" -m pip install -q -r "$PKG/requirements.txt"
+  pip_install_requirements
+}
+
+pip_offline_hint() {
+  echo "HostPulse: pip failed (often no PyPI outbound on air-gapped VMs)." >&2
+  echo "  Use a prebuilt .venv, HOSTPULSE_PYTHON with deps already installed," >&2
+  echo "  or a local wheelhouse / PIP_INDEX_URL mirror. See DEPLOY.md (Linux air-gap)." >&2
+}
+
+pip_install_requirements() {
+  if ! "$PY" -m pip install -q --upgrade pip; then
+    pip_offline_hint
+    exit 1
+  fi
+  if ! "$PY" -m pip install -q -r "$PKG/requirements.txt"; then
+    pip_offline_hint
+    exit 1
+  fi
 }
 
 ensure_deps() {
@@ -76,13 +92,23 @@ require_dependencies(frozen=False)
   fi
 
   echo "HostPulse: updating dependencies in .venv ..."
-  "$PY" -m pip install -q -r "$PKG/requirements.txt"
+  pip_install_requirements
   "$PY" -c "
 import sys
 sys.path.insert(0, '${BIN}')
 from deps_check import require_dependencies
 require_dependencies(frozen=False)
 "
+}
+
+ensure_gui_tk() {
+  if "$PY" -c "import tkinter" 2>/dev/null; then
+    return
+  fi
+  echo "HostPulse: tkinter not available (needed for GUI)." >&2
+  echo "  On Debian/Ubuntu: sudo apt install python3-tk" >&2
+  echo "  Or use headless: ./hostpulse.sh run --quick --production-safe --out results/report.html" >&2
+  exit 1
 }
 
 usage() {
@@ -112,6 +138,7 @@ case "${1:-}" in
   gui)
     shift
     ensure_deps
+    ensure_gui_tk
     exec "$PY" "$BIN/ui_benchmark.py" "$@"
     ;;
   run)
@@ -122,6 +149,7 @@ case "${1:-}" in
   "")
     ensure_deps
     if [[ -n "${DISPLAY:-}" ]]; then
+      ensure_gui_tk
       exec "$PY" "$BIN/ui_benchmark.py"
     fi
     OUT="$PKG/results/report.html"

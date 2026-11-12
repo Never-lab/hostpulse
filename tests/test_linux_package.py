@@ -21,6 +21,8 @@ def test_hostpulse_launcher_exists() -> None:
     assert "bin/cli.py" in text
     assert "production-safe" in text
     assert ".venv" in text
+    assert "python3-tk" in text
+    assert "air-gapped" in text or "air-gap" in text
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Linux package build needs bash")

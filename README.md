@@ -69,9 +69,9 @@ A **graphify** knowledge graph of this repo lives in [`docs/graphify/`](docs/gra
 
 ## Build release packages
 
-**Windows EXE** — from Windows: `.\build_exe.ps1`  
-From Linux (Docker): `python build_exe_windows.py`  
-Output: `dist/windows/HostPulse/` (`HostPulse.exe` + `_internal/` + `config/` + `results/`).
+**Windows EXE (official)** — from Windows: `.\build_exe.ps1`  
+Output: `dist/windows/HostPulse/` onedir (`HostPulse.exe` + `_internal/` + `config/` + `results/` + `SHA256.txt`).  
+Docker cross-build (`python build_exe_windows.py`) is **deprecated** and not release-parity.
 
 **Antivirus / SmartScreen:** PyInstaller unsigned può essere bloccato — mitigazioni in build (onedir, no UPX) e guida IT in [docs/WINDOWS_AV.md](docs/WINDOWS_AV.md). Firma opzionale: `HOSTPULSE_SIGN_PFX` + `HOSTPULSE_SIGN_PASSWORD`.
 
