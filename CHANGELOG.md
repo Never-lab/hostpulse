@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2 — High-priority audit safety fixes
+
+- Health Score: zero throughput is critical (failed/partial runs cannot score A/100); sub-ms latency stays scorable; latency rows omitted when disk never ran
+- Quick mode skips chaos load
+- Frozen Windows EXE/CLI call `multiprocessing.freeze_support()` before chaos Process spawn
+- CLI refuses app/db full load without `--production-safe` unless `--force`
+- Disk sequential write gates on free space (1.1×) and maps ENOSPC/OSError to health events
+- First-run `config.example.json`: 512 MB sizes + `PRODUCTION_SAFE: true`
+
 ## 1.4.1 — Report layout fix (Health Score + CPU freq chart)
 
 Renumbered from mistaken tag `v0.4.1` (SemVer 3-part; equivalent to intended `0.1.4.1`).
