@@ -9,7 +9,7 @@ HostPulse è distribuito come **EXE PyInstaller non firmato** (salvo release fir
 | **onedir** invece di onefile | Niente estrazione in `%TEMP%` a ogni avvio (comportamento tipico del malware) |
 | **UPX disabilitato** | I packer compressi alzano molto i falsi positivi |
 | **Version resource** | `ProductName`, `FileVersion`, `CompanyName` nell’EXE |
-| **SHA256.txt** nel pacchetto | Verifica integrità vs [GitHub Releases](https://github.com/Never-lab/hostpulse/releases/latest) |
+| **SHA256.txt** nel pacchetto | Hash di `HostPulse.exe`; confronta anche con `SHA256SUMS.txt` sulla [Release](https://github.com/Never-lab/hostpulse/releases/latest) |
 | **Firma Authenticode** (opzionale) | Se configuri un certificato code signing in CI o in locale |
 
 ## Verifica integrità (consigliato al cliente)
@@ -18,7 +18,8 @@ Dopo aver estratto `HostPulse-windows.zip`:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 .\HostPulse.exe
-# confronta con SHA256.txt nella stessa cartella o con l’hash pubblicato nella Release
+# confronta con SHA256.txt nella stessa cartella
+# e/o con SHA256SUMS.txt (hash degli zip) allegato alla Release GitHub
 ```
 
 ## Per l’IT / il cliente (esclusione controllata)

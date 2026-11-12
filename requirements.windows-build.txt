@@ -1,4 +1,6 @@
-# Dipendenze compatibili con Python 3.7 (build Docker cdrx/pyinstaller-windows)
+# DEPRECATED: only used by build_exe_windows.py (Docker cross-build, not release-parity).
+# Official Windows build: build_exe.ps1 on Windows with Python 3.12 + requirements.txt.
+# Pins below may lag the release path; do not use for shipping artifacts.
 psutil==7.2.2
 customtkinter>=6.0.0,<7
 matplotlib>=3.10.9,<3.11

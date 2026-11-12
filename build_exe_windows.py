@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build EXE Windows da Linux/macOS tramite Docker (cdrx/pyinstaller-windows)."""
+"""DEPRECATED: Docker Windows cross-build (cdrx/pyinstaller-windows).
+
+Official release path: Windows runner + ``build_exe.ps1`` (Python 3.12, SHA256,
+optional Authenticode). This script is best-effort for local experiments only
+and is not parity with CI artifacts.
+"""
 from __future__ import annotations
 
 import os
@@ -37,6 +42,11 @@ def run_docker(root: Path, image: str) -> subprocess.CompletedProcess:
 
 
 def main() -> int:
+    print(
+        "WARNING: build_exe_windows.py is DEPRECATED. "
+        "Official builds: .\\build_exe.ps1 on Windows (or Release CI).",
+        flush=True,
+    )
     if shutil.which("docker") is None:
         print("Docker non trovato nel PATH.", flush=True)
         return 1

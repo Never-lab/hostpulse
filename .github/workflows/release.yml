@@ -113,12 +113,28 @@ jobs:
           merge-multiple: true
           path: dist
 
+      - name: Write SHA256SUMS
+        run: |
+          cd dist
+          sha256sum HostPulse-windows.zip HostPulse-linux.zip | tee SHA256SUMS.txt
+          {
+            echo "## Checksums (SHA256)"
+            echo ""
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+            echo ""
+            echo "Windows onedir also ships \`SHA256.txt\` for \`HostPulse.exe\` inside the zip."
+          } > release_checksums.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
+          body_path: dist/release_checksums.md
           files: |
             dist/HostPulse-windows.zip
             dist/HostPulse-linux.zip
+            dist/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

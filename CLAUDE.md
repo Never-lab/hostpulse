@@ -76,11 +76,11 @@ pip install -r requirements.txt
 cd bin
 python ui_benchmark.py
 
-# Windows EXE
+# Windows EXE (official: Windows runner / build_exe.ps1 → onedir)
 .\build_exe.ps1
 
-# Linux/macOS → Windows EXE via Docker
-python build_exe_windows.py
+# Deprecated: Docker cross-build (not release-parity; prefer build_exe.ps1)
+# python build_exe_windows.py
 ```
 
 Config: copy `config/config.example.json` → `config/config.json` (gitignored).
@@ -94,7 +94,7 @@ Config: copy `config/config.example.json` → `config/config.json` (gitignored).
 | `bin/reporter_generator.py` | Scorecard, HTML, matplotlib/seaborn assets |
 | `bin/ui_benchmark.py` | Entry + GUI + worker orchestration |
 | `config/baseline.json` | Reference metrics for report deltas |
-| `HostPulse.windows.spec` | PyInstaller one-file EXE |
+| `HostPulse.windows.spec` | PyInstaller **onedir** EXE (`HostPulse.exe` + `_internal/`) |
 
 ### Profiles
 

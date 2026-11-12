@@ -37,12 +37,12 @@ if ($BuildExe) {
     Write-Host "==> PyInstaller build"
     & (Join-Path $Root "build_exe.ps1") -PythonExe $PythonExe
     if ($LASTEXITCODE -ne 0) { throw "build_exe failed" }
-    $exe = Join-Path $Root "dist\windows\HostPulse\HostPulse.exe"
-    if (-not (Test-Path $exe)) {
-        $exe = Join-Path $Root "dist\windows\HostPulse.exe"
-    }
-    if (-not (Test-Path $exe)) { throw "EXE not found after build" }
-    Write-Host "EXE ok: $exe"
+    $pkg = Join-Path $Root "dist\windows\HostPulse"
+    $exe = Join-Path $pkg "HostPulse.exe"
+    $internal = Join-Path $pkg "_internal"
+    if (-not (Test-Path $exe)) { throw "EXE not found after build (expected onedir: $exe)" }
+    if (-not (Test-Path $internal)) { throw "_internal folder missing (onedir layout required)" }
+    Write-Host "EXE ok (onedir): $exe"
 }
 
 Write-Host ""
