@@ -625,8 +625,8 @@ class HostPulseEngine:
             json.dump(self.data, f, indent=4)
         return target
 
-    def get_history(self):
-        """Carica tutti gli audit JSON dalla cartella results; salta file malformati."""
+    def get_history(self, hostname=None):
+        """Carica audit JSON da results/; salta malformati. Filtra hostname se dato; ordina per meta.timestamp."""
         history = []
         for f in os.listdir(self.results_dir):
             if not f.endswith(".json"):
@@ -635,8 +635,12 @@ class HostPulseEngine:
             try:
                 with open(path, "r", encoding="utf-8") as j:
                     data = json.load(j)
-                if isinstance(data, dict) and "meta" in data:
-                    history.append(data)
+                if not (isinstance(data, dict) and "meta" in data):
+                    continue
+                if hostname and str(data.get("meta", {}).get("hostname") or "") != hostname:
+                    continue
+                history.append(data)
             except (json.JSONDecodeError, OSError):
                 pass  # file corrotto o non leggibile: saltato
+        history.sort(key=lambda d: str(d.get("meta", {}).get("timestamp") or ""))
         return history

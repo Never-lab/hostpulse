@@ -41,8 +41,8 @@ def test_run_audit_populates_overall(monkeypatch, tmp_path: Path) -> None:
         def save_results(self):
             return str(tmp_path / "out.json")
 
-        def get_history(self):
-            return self.data
+        def get_history(self, hostname=None):
+            return [self.data]
 
     class FakeReporter:
         def __init__(self, *a, **k):
