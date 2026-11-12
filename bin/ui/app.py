@@ -136,13 +136,14 @@ def _build_audit_app_class() -> type:
             mode = "production-safe" if preset.production_safe else ("quick" if preset.quick else "full")
             mode_label = MODE_LABELS.get(mode, mode)
             summary = f"{preset.name} · {profile_label} · {mode_label}"
+            export_slides = self.setup_screen.get_export_slides()
 
             self.show_live()
             self.live_screen.reset(summary)
 
             self._worker_thread = threading.Thread(
                 target=self._run_audit_worker,
-                args=(preset,),
+                args=(preset, export_slides),
                 daemon=True,
             )
             self._worker_thread.start()
@@ -154,7 +155,7 @@ def _build_audit_app_class() -> type:
 
         # --- background worker ---
 
-        def _run_audit_worker(self, preset: Preset) -> None:
+        def _run_audit_worker(self, preset: Preset, export_slides: bool = False) -> None:
             try:
                 ensure_runtime_dirs()
                 root_dir = str(get_app_base_dir())
@@ -171,6 +172,7 @@ def _build_audit_app_class() -> type:
                     quick=preset.quick,
                     production_safe=preset.production_safe,
                     compare=preset.compare,
+                    export_slides=export_slides,
                     cancel_event=self._cancel_event,
                     on_progress=on_progress,
                 )

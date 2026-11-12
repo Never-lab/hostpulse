@@ -53,7 +53,7 @@ def run_audit(
     quick: bool = False,
     production_safe: bool = False,
     compare: bool = False,
-    export_slides: bool = True,
+    export_slides: bool = False,
     cancel_event: Optional[Event] = None,
     on_progress: Optional[ProgressFn] = None,
 ) -> AuditResultPaths:

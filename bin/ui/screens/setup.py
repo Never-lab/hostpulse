@@ -202,6 +202,7 @@ class SetupScreen(ctk.CTkFrame):
         self._quick_var = ctk.BooleanVar(value=False)
         self._production_safe_var = ctk.BooleanVar(value=False)
         self._compare_var = ctk.BooleanVar(value=False)
+        self._export_slides_var = ctk.BooleanVar(value=False)
 
         ctk.CTkCheckBox(
             parent,
@@ -225,7 +226,15 @@ class SetupScreen(ctk.CTkFrame):
             variable=self._compare_var,
             fg_color=COLORS["accent"],
             hover_color=COLORS["brand"],
-        ).grid(row=4, column=0, sticky="w", padx=20, pady=(2, 16))
+        ).grid(row=4, column=0, sticky="w", padx=20, pady=(2, 0))
+
+        ctk.CTkCheckBox(
+            parent,
+            text="Esporta slide PNG (opzionale)",
+            variable=self._export_slides_var,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["brand"],
+        ).grid(row=5, column=0, sticky="w", padx=20, pady=(2, 16))
 
         self._profile_var.trace_add("write", self._on_advanced_changed)
         self._quick_var.trace_add("write", self._on_advanced_changed)
@@ -245,6 +254,10 @@ class SetupScreen(ctk.CTkFrame):
             compare=self._compare_var.get(),
             builtin=builtin,
         )
+
+    def get_export_slides(self) -> bool:
+        """Session-only toggle; not part of presets (HTML report is the deliverable)."""
+        return bool(self._export_slides_var.get())
 
     def refresh_presets(self) -> None:
         self._presets = list_presets()
