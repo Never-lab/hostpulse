@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0 — Metric honesty (Pacinotti feedback)
+
+- Dual ping: Internet (`PING_TARGET` / default `8.8.8.8`) plus auto-detected default gateway; optional `PING_TARGETS` override; report shows both with explicit caveats
+- Disk random IOPS prefer unbuffered I/O on Windows/Linux (`iops_mode`); cached fallback labeled; very high cached IOPS marked as possible OS page cache
+- CPU Stability stress uses up to 4 worker threads; RAM bandwidth thresholds/tooltips aligned to the Python in-process copy benchmark
+- Report help text clarifies network/IOPS/RAM interpretation limits
+
 ## 1.4.3 — Fix Linux release smoke deps
 
 - Release `linux-package` job installs `requirements.txt` before `HOSTPULSE_PYTHON` smoke (matches CI; unblocks tag-triggered assets after 1.4.2)

@@ -1,6 +1,6 @@
 [project]
 name = "hostpulse"
-version = "1.4.3"
+version = "1.5.0"
 description = "Hardware/OS benchmark for Windows VMs (app/DB server), Linux-ready design"
 readme = "README.md"
 license = { file = "LICENSE" }
