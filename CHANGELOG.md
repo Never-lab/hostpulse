@@ -1,11 +1,16 @@
 # Changelog
 
+## 1.5.1 — Release gate (fixture engine_version)
+
+- Sync `tests/fixtures/minimal_audit.json` `engine_version` with package version (unblocks Release verify after 1.5.0 tag)
+
 ## 1.5.0 — Metric honesty (Pacinotti feedback)
 
 - Dual ping: Internet (`PING_TARGET` / default `8.8.8.8`) plus auto-detected default gateway; optional `PING_TARGETS` override; report shows both with explicit caveats
 - Disk random IOPS prefer unbuffered I/O on Windows/Linux (`iops_mode`); cached fallback labeled; very high cached IOPS marked as possible OS page cache
 - CPU Stability stress uses up to 4 worker threads; RAM bandwidth thresholds/tooltips aligned to the Python in-process copy benchmark
 - Report help text clarifies network/IOPS/RAM interpretation limits
+- Note: tag `v1.5.0` verify failed on fixture drift; use `v1.5.1` for assets
 
 ## 1.4.3 — Fix Linux release smoke deps
 
