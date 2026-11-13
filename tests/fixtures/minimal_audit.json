@@ -58,14 +58,19 @@
       "seq_read_mb": 400,
       "iops": 5000,
       "latency_p99_ms": 2,
-      "db_sim_latency_ms": 1
+      "db_sim_latency_ms": 1,
+      "iops_mode": "unbuffered"
     },
     "ram_perf": {
       "copy_speed_gb": 2.5
     },
     "net": {
       "avg_ms": 10,
-      "jitter_ms": 1
+      "jitter_ms": 1,
+      "targets": [
+        {"host": "8.8.8.8", "role": "internet", "avg_ms": 10, "jitter_ms": 1, "ok": true},
+        {"host": "192.168.1.1", "role": "gateway", "avg_ms": 2, "jitter_ms": 0.3, "ok": true}
+      ]
     },
     "chaos": {
       "active": false,

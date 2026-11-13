@@ -4,6 +4,8 @@
     "DISK_SEQ_MB": 512,
     "DISK_IOPS_ITERATIONS": 10000,
     "PING_TARGET": "8.8.8.8",
+    "PING_TARGETS": null,
+    "WARN_LATENCY_MS": 80,
     "PROFILE": "generic",
     "PRODUCTION_SAFE": true,
     "WARN_DB_LATENCY_MS": 10,

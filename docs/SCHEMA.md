@@ -28,6 +28,10 @@ On-disk and in-memory audit payloads use a versioned contract.
 | `benchmark.disk` | seq_write_mb, seq_read_mb, iops, latency_p99_ms, db_sim_latency_ms |
 | `benchmark.chaos` | active, disk_iops_under_load, impact_pct |
 
+Optional (v1 additive): `benchmark.disk.iops_mode` (`unbuffered`|`cached`);
+`benchmark.net.targets[]` with `{host, role, avg_ms, jitter_ms, ok}`
+(`role`: `internet`|`gateway`|`custom`). Legacy `net.avg_ms` / `net.jitter_ms` remain the first successful target.
+
 `cpu_consistency.stability_score` is optional until the CPU suite runs (init has jitter_score + avg_task_ms only).
 
 Source of truth: `bin/schema.py` (`stamp_audit`, `missing_structure`, required-key tuples).  

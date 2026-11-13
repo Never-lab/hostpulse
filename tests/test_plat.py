@@ -135,9 +135,11 @@ def test_net_benchmark_uses_adapter_ping() -> None:
 
     engine = HostPulseEngine(quick=True, production_safe=True)
     engine.plat = MagicMock()
+    engine.plat.default_gateway.return_value = None
     engine.plat.ping_argv.return_value = ["ping", "-c", "6", "8.8.8.8"]
     fake = "64 bytes from 8.8.8.8: icmp_seq=1 ttl=50 time=10.0 ms\n" * 4
     with patch("engine.subprocess.check_output", return_value=fake):
         engine.net_benchmark()
     engine.plat.ping_argv.assert_called_once()
     assert engine.data["benchmark"]["net"]["avg_ms"] == 10.0
+    assert engine.data["benchmark"]["net"]["targets"][0]["host"] == "8.8.8.8"

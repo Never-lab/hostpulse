@@ -38,6 +38,8 @@ class PlatformAdapter(Protocol):
 
     def ping_argv(self, target: str, count: int = 6) -> list[str]: ...
 
+    def default_gateway(self) -> str | None: ...
+
 
 def get_adapter() -> PlatformAdapter:
     system = platform.system().lower()
@@ -103,6 +105,17 @@ class WindowsAdapter:
 
     def ping_argv(self, target: str, count: int = 6) -> list[str]:
         return ["ping", "-n", str(count), "-w", "1000", target]
+
+    def default_gateway(self) -> str | None:
+        raw = self._run_ps(
+            "(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue "
+            "| Sort-Object RouteMetric | Select-Object -First 1).NextHop"
+        )
+        if raw:
+            hop = raw.strip().splitlines()[-1].strip()
+            if _looks_like_ipv4(hop):
+                return hop
+        return None
 
     @staticmethod
     def _is_elevated() -> bool:
@@ -201,6 +214,28 @@ class LinuxAdapter:
 
     def ping_argv(self, target: str, count: int = 6) -> list[str]:
         return ["ping", "-c", str(count), "-W", "1", target]
+
+    def default_gateway(self) -> str | None:
+        try:
+            text = Path("/proc/net/route").read_text(encoding="utf-8")
+        except OSError:
+            return None
+        for line in text.splitlines()[1:]:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            # Destination 00000000 = default route; Gateway is little-endian hex.
+            if parts[1] != "00000000":
+                continue
+            gw_hex = parts[2]
+            if len(gw_hex) != 8 or gw_hex == "00000000":
+                continue
+            try:
+                raw = int(gw_hex, 16)
+            except ValueError:
+                continue
+            return ".".join(str((raw >> (8 * i)) & 0xFF) for i in range(4))
+        return None
 
     @staticmethod
     def _cpu_governor() -> str | None:
@@ -333,6 +368,19 @@ class GenericAdapter:
     def ping_argv(self, target: str, count: int = 6) -> list[str]:
         # Best-effort BSD/mac style
         return ["ping", "-c", str(count), target]
+
+    def default_gateway(self) -> str | None:
+        return None
+
+
+def _looks_like_ipv4(value: str) -> bool:
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        return all(0 <= int(p) <= 255 for p in parts)
+    except ValueError:
+        return False
 
 
 _PING_MS_RE = re.compile(r"(?:time|tempo|durata)\s*[=<]\s*<?\s*(\d+(?:\.\d+)?)", re.I)

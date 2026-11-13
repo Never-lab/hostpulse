@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app_paths import ensure_runtime_dirs, get_app_base_dir, get_config_dir, get_results_dir, safe_filename_component
 from cancel import check_cancel
+from disk_io import measure_random_read_latencies
 from plat import get_adapter, parse_ping_latencies_ms
 from schema import stamp_audit
 
@@ -22,6 +23,7 @@ _HIGH_PERF_PLAN_KEYWORDS = (
     "performance",
     "schedutil",
 )
+_PUBLIC_DNS_HOSTS = frozenset({"8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9"})
 
 
 def _cpu_stress_worker(duration_s):
@@ -32,7 +34,7 @@ def _cpu_stress_worker(duration_s):
 
 
 def _measure_disk_iops(iterations, seq_mb):
-    """Misura IOPS su file temporaneo con letture random 4K."""
+    """Misura IOPS su file temporaneo con letture random 4K (unbuffered se possibile)."""
     sz_mb = max(64, int(seq_mb / 4))
     with tempfile.NamedTemporaryFile(delete=False) as tf:
         path = tf.name
@@ -44,18 +46,8 @@ def _measure_disk_iops(iterations, seq_mb):
             f.flush()
             os.fsync(f.fileno())
 
-        block_size = 4096
-        latencies = []
-        with open(path, "rb") as f:
-            file_size = sz_mb * 1024 * 1024
-            for _ in range(iterations):
-                offset = random.randint(0, max(0, file_size - block_size))
-                t0 = time.perf_counter()
-                f.seek(offset)
-                if not f.read(block_size):
-                    break
-                t1 = time.perf_counter()
-                latencies.append((t1 - t0) * 1000.0)
+        file_size = sz_mb * 1024 * 1024
+        latencies, _mode = measure_random_read_latencies(path, file_size, iterations)
     finally:
         if os.path.exists(path):
             os.remove(path)
@@ -136,9 +128,10 @@ class HostPulseEngine:
                     "iops": 0,
                     "latency_p99_ms": 0,
                     "db_sim_latency_ms": 0,
+                    "iops_mode": "cached",
                 },
                 "ram_perf": {"copy_speed_gb": 0},
-                "net": {"avg_ms": 0, "jitter_ms": 0},
+                "net": {"avg_ms": 0, "jitter_ms": 0, "targets": []},
                 "chaos": {
                     "active": False,
                     "disk_iops_under_load": 0,
@@ -155,6 +148,8 @@ class HostPulseEngine:
             "DISK_SEQ_MB": 512,
             "DISK_IOPS_ITERATIONS": 10000,
             "PING_TARGET": "8.8.8.8",
+            "PING_TARGETS": None,
+            "WARN_LATENCY_MS": 80,
             "WARN_CPU_QUEUE_LENGTH": 4,
             "WARN_CTX_SWITCHES_SEC": 50000,
             "PROFILE": "generic",
@@ -344,8 +339,9 @@ class HostPulseEngine:
         cpu_series["usage"].clear()
         cpu_series["freq"].clear()
 
-        # Thread che genera spike casuali di carico (randomizza il carico nel tempo)
+        # Spike multi-thread (~min(nCPU, 4)) per impegnare più core, non uno solo.
         stop_spike = threading.Event()
+        n_workers = max(1, min(int(psutil.cpu_count() or 1), 4))
 
         def random_spike_load():
             for _ in range(points):
@@ -353,7 +349,7 @@ class HostPulseEngine:
                     getattr(self, "cancel_event", None) is not None and self.cancel_event.is_set()
                 ):
                     break
-                spike = random.uniform(0.25, 1.0)  # frazione del secondo a 100% CPU
+                spike = random.uniform(0.35, 1.0)
                 end_t = time.perf_counter() + interval
                 burn_until = time.perf_counter() + spike
                 while time.perf_counter() < burn_until and not stop_spike.is_set():
@@ -364,8 +360,11 @@ class HostPulseEngine:
                 if remaining > 0:
                     time.sleep(remaining)
 
-        spike_thread = threading.Thread(target=random_spike_load, daemon=True)
-        spike_thread.start()
+        spike_threads = [
+            threading.Thread(target=random_spike_load, daemon=True) for _ in range(n_workers)
+        ]
+        for t in spike_threads:
+            t.start()
 
         psutil.cpu_percent(interval=None)
         start = time.perf_counter()
@@ -380,6 +379,8 @@ class HostPulseEngine:
                 cpu_series["freq"].append(int(freq))
         finally:
             stop_spike.set()
+            for t in spike_threads:
+                t.join(timeout=2)
 
         # Metriche di stabilità nel tempo basate sulla serie raccolta
         if len(cpu_series["usage"]) >= 5:
@@ -388,8 +389,8 @@ class HostPulseEngine:
                 freqs = [f for f in cpu_series["freq"] if f > 0]
                 freq_jitter = statistics.pstdev(freqs) if len(freqs) >= 5 else 0.0
 
-                # Score semplice 0–100: più bassa è la varianza, più alto è lo score.
-                normalized = (usage_jitter / 5.0) + (freq_jitter / 250.0)
+                # Score 0–100 sotto stress multi-thread (soglie meno punitive del monothread).
+                normalized = (usage_jitter / 8.0) + (freq_jitter / 250.0)
                 stability_score = max(0.0, 100.0 - normalized * 20.0)
                 self.data["benchmark"]["cpu_consistency"]["stability_score"] = round(stability_score, 1)
             except statistics.StatisticsError:
@@ -478,25 +479,23 @@ class HostPulseEngine:
                         sz_mb / (time.perf_counter() - start), 2
                     )
 
-                # IOPS e latenze su blocchi piccoli (simulazione workload DB)
+                # IOPS e latenze su blocchi piccoli (unbuffered se possibile)
                 iterations = self.config.get("DISK_IOPS_ITERATIONS", 10000)
-                block_size = 4096
-                latencies = []
-                total_bytes = 0
-                with open(path, "rb") as f:
-                    file_size = sz_mb * 1024 * 1024
-                    for i in range(iterations):
-                        if i % 500 == 0:
-                            self._check_cancel()
-                        offset = random.randint(0, max(0, file_size - block_size))
-                        t0 = time.perf_counter()
-                        f.seek(offset)
-                        chunk = f.read(block_size)
-                        t1 = time.perf_counter()
-                        if not chunk:
-                            break
-                        latencies.append((t1 - t0) * 1000.0)
-                        total_bytes += len(chunk)
+                file_size = sz_mb * 1024 * 1024
+                latencies, iops_mode = measure_random_read_latencies(
+                    path,
+                    file_size,
+                    iterations,
+                    check_cancel=self._check_cancel,
+                )
+                self.data["benchmark"]["disk"]["iops_mode"] = iops_mode
+                if iops_mode == "cached":
+                    self._push_health(
+                        "INFO",
+                        "DISK_IOPS_CACHED",
+                        "IOPS misurati in modalità cached (unbuffered non disponibile): "
+                        "valori alti possono riflettere la page cache OS.",
+                    )
 
                 if latencies:
                     total_time_s = sum(l / 1000.0 for l in latencies)
@@ -558,33 +557,92 @@ class HostPulseEngine:
             gb_s = total_bytes / (1024**3) / elapsed
             self.data["benchmark"]["ram_perf"]["copy_speed_gb"] = round(gb_s, 2)
 
-    def net_benchmark(self):
-        """Ping semplice per stimare latenza media e jitter."""
-        target = self.config.get("PING_TARGET", "8.8.8.8")
+    def _resolve_ping_targets(self) -> list[tuple[str, str]]:
+        """Return ordered (host, role) pairs: internet (+ gateway) or PING_TARGETS override."""
+        cfg = self.config.get("PING_TARGETS")
+        if isinstance(cfg, (list, tuple)) and cfg:
+            out: list[tuple[str, str]] = []
+            for raw in cfg:
+                host = str(raw).strip()
+                if not host:
+                    continue
+                role = "internet" if host in _PUBLIC_DNS_HOSTS else "custom"
+                if host not in {h for h, _ in out}:
+                    out.append((host, role))
+            return out or [("8.8.8.8", "internet")]
+
+        primary = str(self.config.get("PING_TARGET") or "8.8.8.8").strip() or "8.8.8.8"
+        role = "internet" if primary in _PUBLIC_DNS_HOSTS else "custom"
+        targets = [(primary, role)]
+        gateway = None
         try:
-            cmd = self.plat.ping_argv(target, count=6)
-            out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
-        except Exception as exc:
+            gateway = self.plat.default_gateway()
+        except Exception:
+            gateway = None
+        if gateway and gateway not in {h for h, _ in targets}:
+            targets.append((gateway, "gateway"))
+        elif not gateway:
             self._push_health(
-                "WARN",
-                "NET_PING_FAILED",
-                f"Ping verso {target} fallito: {exc}",
+                "INFO",
+                "NET_GATEWAY_UNKNOWN",
+                "Gateway di default non rilevato: eseguito solo il ping primario.",
             )
-            return
+        return targets
 
-        times = parse_ping_latencies_ms(out)
-        if times:
+    def net_benchmark(self):
+        """Ping verso Internet (default 8.8.8.8) e gateway locale, se disponibile."""
+        net = self.data["benchmark"]["net"]
+        net["targets"] = []
+        limit_ms = float(self.config.get("WARN_LATENCY_MS", 80))
+        primary_set = False
+
+        for host, role in self._resolve_ping_targets():
+            entry = {
+                "host": host,
+                "role": role,
+                "avg_ms": 0.0,
+                "jitter_ms": 0.0,
+                "ok": False,
+            }
+            try:
+                cmd = self.plat.ping_argv(host, count=6)
+                out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+                times = parse_ping_latencies_ms(out)
+            except Exception as exc:
+                self._push_health(
+                    "WARN",
+                    "NET_PING_FAILED",
+                    f"Ping verso {host} ({role}) fallito: {exc}",
+                )
+                net["targets"].append(entry)
+                continue
+
+            if not times:
+                self._push_health(
+                    "WARN",
+                    "NET_PING_FAILED",
+                    f"Ping verso {host} ({role}): nessuna latenza parsata.",
+                )
+                net["targets"].append(entry)
+                continue
+
             avg = statistics.mean(times)
-            jitter = statistics.pstdev(times) if len(times) > 1 else 0
-            self.data["benchmark"]["net"]["avg_ms"] = round(avg, 1)
-            self.data["benchmark"]["net"]["jitter_ms"] = round(jitter, 1)
+            jitter = statistics.pstdev(times) if len(times) > 1 else 0.0
+            entry["avg_ms"] = round(avg, 1)
+            entry["jitter_ms"] = round(jitter, 1)
+            entry["ok"] = True
+            net["targets"].append(entry)
 
-            limit_ms = float(self.config.get("WARN_LATENCY_MS", 80))
+            if not primary_set:
+                net["avg_ms"] = entry["avg_ms"]
+                net["jitter_ms"] = entry["jitter_ms"]
+                primary_set = True
+
             if avg >= limit_ms:
                 self._push_health(
                     "WARN",
                     "NET_HIGH_LATENCY",
-                    f"Latenza media verso {target} elevata: {avg:.1f} ms (soglia {limit_ms} ms).",
+                    f"Latenza media verso {host} ({role}) elevata: {avg:.1f} ms (soglia {limit_ms} ms).",
                 )
 
     def check_app_port(self, port=None):
