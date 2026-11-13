@@ -214,17 +214,27 @@ class ReportGenerator:
                 150,
             )
         )
-        rows.append(
-            self._metric_row(
-                "disk_iops",
-                "Disk Random IOPS",
-                ["benchmark", "disk", "iops"],
-                "IO/s",
-                "Operazioni random 4K al secondo. Metrica chiave per database e workload transazionali.",
-                iops_good,
-                iops_warn,
-            )
+        iops_mode = str(self._get_val(data, ["benchmark", "disk", "iops_mode"], default="cached") or "cached")
+        iops_label = f"Disk Random IOPS ({iops_mode})"
+        iops_tip = (
+            "Operazioni random 4K/s in modalità unbuffered (bypass page cache OS)."
+            if iops_mode == "unbuffered"
+            else "Operazioni random 4K/s in modalità cached: valori molto alti possono riflettere la page cache OS, non il disco Azure/fisico."
         )
+        iops_row = self._metric_row(
+            "disk_iops",
+            iops_label,
+            ["benchmark", "disk", "iops"],
+            "IO/s",
+            iops_tip,
+            iops_good,
+            iops_warn,
+        )
+        iops_val = float(iops_row.get("value") or 0)
+        if iops_mode == "cached" and iops_val >= 50000:
+            iops_row["status"] = "info"
+            iops_row["verdict"] = "Valore sospetto per disco reale (possibile cache OS)"
+        rows.append(iops_row)
         # Only score latency when disk I/O ran; bare 0 after skip/fail must not look "perfect".
         disk_iops = self._get_val(data, ["benchmark", "disk", "iops"], default=0) or 0
         disk_write = self._get_val(data, ["benchmark", "disk", "seq_write_mb"], default=0) or 0
@@ -272,7 +282,8 @@ class ReportGenerator:
                     "CPU Stability",
                     ["benchmark", "cpu_consistency", "stability_score"],
                     "%",
-                    "Stabilità CPU nel tempo (varianza usage/frequenza durante stress test).",
+                    "Stabilità CPU nel tempo sotto stress multi-thread "
+                    "(varianza usage/frequenza; non è saturazione single-core).",
                     80,
                     60,
                 )
@@ -305,37 +316,106 @@ class ReportGenerator:
                 "RAM Bandwidth",
                 ["benchmark", "ram_perf", "copy_speed_gb"],
                 "GB/s",
-                "Velocità copia in memoria. Utile per cache, sorting e buffer applicativi.",
-                2.0,
-                1.0,
+                "Stima copy in-process (Python bytearray), non bandwidth STREAM hardware. "
+                "Utile come trend relativo, non come GB/s DIMM.",
+                1.5,
+                0.8,
             )
         )
-        net_avg = self._get_val(data, ["benchmark", "net", "avg_ms"], default=0)
-        if net_avg > 0:
-            rows.append(
-                self._metric_row(
-                    "net_latency",
-                    "Latenza rete",
-                    ["benchmark", "net", "avg_ms"],
-                    "ms",
-                    "Ping medio verso target configurato (es. gateway / DNS).",
-                    20,
-                    80,
-                    higher_is_better=False,
+        net = data.get("benchmark", {}).get("net", {}) or {}
+        targets = net.get("targets") if isinstance(net.get("targets"), list) else None
+        if targets:
+            role_labels = {
+                "internet": "Internet",
+                "gateway": "Gateway",
+                "custom": "Custom",
+            }
+            for t in targets:
+                if not isinstance(t, dict) or not t.get("ok"):
+                    continue
+                host = str(t.get("host") or "")
+                role = str(t.get("role") or "custom")
+                role_txt = role_labels.get(role, role.title())
+                key_suffix = role if role in role_labels else "custom"
+                avg = t.get("avg_ms")
+                jitter = t.get("jitter_ms")
+                try:
+                    avg_f = float(avg)
+                    jitter_f = float(jitter)
+                except (TypeError, ValueError):
+                    continue
+                if avg_f <= 0:
+                    continue
+                lat_status, lat_verdict = self._classify(avg_f, 20, 80, higher_is_better=False)
+                jit_status, jit_verdict = self._classify(jitter_f, 3, 15, higher_is_better=False)
+                tip_extra = (
+                    " Misura verso Internet pubblico: non è la latenza utente→server."
+                    if role == "internet"
+                    else " Gateway locale: utile come proxy del primo hop, non sostituisce ping dalla postazione."
+                    if role == "gateway"
+                    else ""
                 )
-            )
-            rows.append(
-                self._metric_row(
-                    "net_jitter",
-                    "Jitter rete",
-                    ["benchmark", "net", "jitter_ms"],
-                    "ms",
-                    "Varianza latenza ping. Valori alti indicano instabilità di rete.",
-                    3,
-                    15,
-                    higher_is_better=False,
+                rows.append(
+                    {
+                        "key": f"net_latency_{key_suffix}",
+                        "label": f"Latenza {role_txt} ({host})",
+                        "tooltip": f"Ping medio verso {host}.{tip_extra}",
+                        "value": avg_f,
+                        "display": f"{avg_f} ms",
+                        "unit": "ms",
+                        "status": lat_status,
+                        "verdict": lat_verdict,
+                        "ref_display": None,
+                        "delta_pct": None,
+                        "good": 20,
+                        "warn": 80,
+                        "higher_is_better": False,
+                    }
                 )
-            )
+                rows.append(
+                    {
+                        "key": f"net_jitter_{key_suffix}",
+                        "label": f"Jitter {role_txt} ({host})",
+                        "tooltip": f"Varianza latenza ping verso {host}.{tip_extra}",
+                        "value": jitter_f,
+                        "display": f"{jitter_f} ms",
+                        "unit": "ms",
+                        "status": jit_status,
+                        "verdict": jit_verdict,
+                        "ref_display": None,
+                        "delta_pct": None,
+                        "good": 3,
+                        "warn": 15,
+                        "higher_is_better": False,
+                    }
+                )
+        else:
+            net_avg = self._get_val(data, ["benchmark", "net", "avg_ms"], default=0)
+            if net_avg > 0:
+                rows.append(
+                    self._metric_row(
+                        "net_latency",
+                        "Latenza rete",
+                        ["benchmark", "net", "avg_ms"],
+                        "ms",
+                        "Ping medio verso target configurato. Verso Internet non misura il percorso utente→server.",
+                        20,
+                        80,
+                        higher_is_better=False,
+                    )
+                )
+                rows.append(
+                    self._metric_row(
+                        "net_jitter",
+                        "Jitter rete",
+                        ["benchmark", "net", "jitter_ms"],
+                        "ms",
+                        "Varianza latenza ping. Valori alti indicano instabilità di rete.",
+                        3,
+                        15,
+                        higher_is_better=False,
+                    )
+                )
 
         chaos_active = self._get_val(data, ["benchmark", "chaos", "active"], default=False)
         chaos_impact = self._get_val(data, ["benchmark", "chaos", "impact_pct"], default=0)
@@ -770,6 +850,14 @@ class ReportGenerator:
             ("ram_bw", "Bandwidth RAM", bench.get("ram_perf", {}).get("copy_speed_gb", 0), "GB/s"),
             ("net_latency", "Latenza rete", bench.get("net", {}).get("avg_ms", 0) or "n/d", "ms"),
         ]
+        # Prefer explicit internet/gateway analysis status for the KPI tint.
+        if "net_latency_internet" in amap:
+            cards[-1] = (
+                "net_latency_internet",
+                "Latenza Internet",
+                amap["net_latency_internet"].get("value", "n/d"),
+                "ms",
+            )
         out = ""
         for key, label, val, unit in cards:
             st = amap.get(key, {}).get("status", "na")
@@ -786,7 +874,19 @@ class ReportGenerator:
             ("Storage & I/O", ["disk_write", "disk_read", "disk_iops", "db_latency", "db_p99", "chaos", "disk_used"]),
             ("CPU", ["cpu_jitter", "cpu_stability", "crypto", "compress", "cpu_queue"]),
             ("Memoria", ["ram_bw", "ram_used", "swap_used"]),
-            ("Rete", ["net_latency", "net_jitter"]),
+            (
+                "Rete",
+                [
+                    "net_latency_internet",
+                    "net_jitter_internet",
+                    "net_latency_gateway",
+                    "net_jitter_gateway",
+                    "net_latency_custom",
+                    "net_jitter_custom",
+                    "net_latency",
+                    "net_jitter",
+                ],
+            ),
         ]
         amap = self._analysis_map()
         out = ""
@@ -847,6 +947,9 @@ class ReportGenerator:
             f"<li>{profile_note}</li>"
             "<li><b>Health Score</b> aggrega le metriche scorable (OK/WARN/CRIT) in un voto 0–100 e una classe A–D.</li>"
             "<li>I badge verde/arancio/rosso confrontano il valore misurato con soglie interne (e con la baseline se presente).</li>"
+            "<li><b>Rete</b>: ping Internet (es. 8.8.8.8) e gateway locale. Non misurano il percorso utente→server né app→DB.</li>"
+            "<li><b>IOPS</b>: preferisce I/O unbuffered; se resta <code>cached</code>, valori alti possono essere page cache OS.</li>"
+            "<li><b>RAM bandwidth</b>: stima copy in-process Python, non STREAM hardware.</li>"
             "<li>Gli eventi Health sono segnali contestuali (piano energetico, VM, porte chiuse, ecc.), non un secondo score.</li>"
             "<li><b>n/d</b> = non disponibile su questo OS/host: passa il mouse sopra per la motivazione.</li>"
             "<li>Questo HTML è self-contained: si apre offline anche su Server senza accesso Internet.</li>"
